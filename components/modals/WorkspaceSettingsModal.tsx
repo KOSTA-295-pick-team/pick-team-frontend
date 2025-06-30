@@ -145,7 +145,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                     {TABS_CONFIG.map((tab) => (
                     <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => setActiveTab(tab.id as 'security' | 'danger' | 'invite' | 'members')}
                         className={`whitespace-nowrap py-3 px-3 border-b-2 font-medium text-sm flex items-center
                         ${activeTab === tab.id
                             ? 'border-primary text-primary'
