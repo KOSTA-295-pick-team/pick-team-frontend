@@ -1,0 +1,9 @@
+{
+  "name": "TeamMate App v2.0",
+  "description": "A Slack-like web application for team formation and collaboration, featuring workspaces, channels (chat, kanban, bulletin board), video conferencing, user profiles, and team spaces with announcements and calendar functionalities.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "prompt": ""
+}
