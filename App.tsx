@@ -440,22 +440,37 @@ function App() {
 const NavigateToInitialView: React.FC = () => {
     const { isAuthenticated, currentUser, workspaces, loading } = useAuth();
     
+    console.log('🧭 NavigateToInitialView 실행');
+    console.log('🔑 isAuthenticated:', isAuthenticated);
+    console.log('👤 currentUser:', currentUser);
+    console.log('🏢 workspaces:', workspaces);
+    console.log('📦 workspaces 길이:', workspaces?.length);
+    console.log('⏳ loading:', loading);
+    
     if (!isAuthenticated) {
+        console.log('❌ 인증되지 않음 -> /login으로 이동');
         return <Navigate to="/login" replace />;
     }
     
     // 로딩 중일 때는 로딩 화면 표시
     if (loading) {
+        console.log('⏳ 로딩 중 -> 로딩 화면 표시');
         return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
     }
     
     // 워크스페이스가 없으면 EmptyWorkspacePage로 이동
     if (!workspaces || workspaces.length === 0) {
+        console.log('🚫 워크스페이스 없음 -> /empty-workspace로 이동');
+        console.log('   - workspaces:', workspaces);
+        console.log('   - 타입:', typeof workspaces);
+        console.log('   - 길이:', workspaces?.length);
         return <Navigate to="/empty-workspace" replace />;
     }
     
     // 워크스페이스가 있으면 기본 워크스페이스로 이동
     const defaultWorkspaceId = currentUser?.currentWorkspaceId || workspaces[0]?.id;
+    console.log('✅ 워크스페이스 있음 -> /ws/' + defaultWorkspaceId + '로 이동');
+    console.log('   - 첫 번째 워크스페이스:', workspaces[0]);
     return <Navigate to={`/ws/${defaultWorkspaceId}`} replace />;
 };
 

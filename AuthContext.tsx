@@ -1,10 +1,10 @@
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { User, Workspace, TeamProject, ChatRoom, ChatRoomMember } from './types';
-import { workspaceApi, ApiError } from './services/api';
+import { workspaceApi, ApiError, authApi, tokenManager, userApi } from './services/api';
 
 interface AuthContextType {
   currentUser: User | null;
-  login: (user: User) => void;
+  login: (user: User) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   currentWorkspace: Workspace | null;
@@ -97,26 +97,54 @@ const DEMO_CHAT_ROOMS_INITIAL: ChatRoom[] = [
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentWorkspace, _setCurrentWorkspace] = useState<Workspace | null>(null);
-  const [currentTeamProject, _setCurrentTeamProject] = useState<TeamProject | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>(FALLBACK_WORKSPACES);
-  const [loading, setLoading] = useState(false);
+  const [_currentWorkspace, _setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [_currentTeamProject, _setCurrentTeamProject] = useState<TeamProject | null>(null);
+  const [_currentChatRoom, _setCurrentChatRoom] = useState<ChatRoom | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Chat state
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>(DEMO_CHAT_ROOMS_INITIAL);
-  const [currentChatRoom, _setCurrentChatRoom] = useState<ChatRoom | null>(null);
+
+  // 앱 시작 시 저장된 토큰으로 자동 로그인 시도
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const token = tokenManager.getAccessToken();
+      const refreshToken = tokenManager.getRefreshToken();
+      
+      if (token && refreshToken) {
+        try {
+          // 현재 사용자 정보 조회로 토큰 유효성 확인
+          const userData = await userApi.getCurrentUser();
+          setCurrentUser(userData);
+          console.log('자동 로그인 성공:', userData.email);
+        } catch (error) {
+          console.warn('자동 로그인 실패:', error);
+          tokenManager.clearTokens();
+        }
+      }
+      setLoading(false);
+    };
+
+    initializeAuth();
+  }, []);
 
   // 워크스페이스 목록을 새로고침하는 함수
   const refreshWorkspaces = useCallback(async () => {
-    if (!currentUser) return;
-    
+    console.log('🔄 refreshWorkspaces 시작');
     setLoading(true);
     try {
+      console.log('📞 workspaceApi.getMyWorkspaces 호출');
       const fetchedWorkspaces = await workspaceApi.getMyWorkspaces();
+      console.log('✅ API 응답 성공:', fetchedWorkspaces);
+      console.log('📊 워크스페이스 개수:', fetchedWorkspaces.length);
+      
       setWorkspaces(fetchedWorkspaces);
+      console.log('🔄 setWorkspaces 완료');
       setError(null);
     } catch (err) {
+      console.error('❌ 워크스페이스 로드 실패:', err);
       console.warn('워크스페이스 로드 실패, 폴백 데이터 사용:', err);
       setWorkspaces(FALLBACK_WORKSPACES);
       if (err instanceof ApiError) {
@@ -126,8 +154,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } finally {
       setLoading(false);
+      console.log('🏁 refreshWorkspaces 완료');
     }
-  }, [currentUser]);
+  }, []);
 
   const login = useCallback(async (user: User) => {
     const demoUserWithPic: User = {
@@ -143,17 +172,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     _setCurrentTeamProject(null);
     _setCurrentChatRoom(null);
     
-    // 로그인 후 워크스페이스 목록 로드
-    setTimeout(() => refreshWorkspaces(), 100);
+    // 로그인 후 워크스페이스 목록 로드 (즉시 실행)
+    console.log('🚀 login 완료 후 refreshWorkspaces 즉시 실행');
+    await refreshWorkspaces();
+    console.log('🎯 login 과정 완전 완료');
   }, [refreshWorkspaces]);
 
-  const logout = useCallback(() => {
-    setCurrentUser(null);
-    _setCurrentWorkspace(null);
-    _setCurrentTeamProject(null);
-    _setCurrentChatRoom(null);
-    setWorkspaces([]);
-    setError(null);
+  const logout = useCallback(async () => {
+    try {
+      // 백엔드에 로그아웃 요청
+      await authApi.logout();
+    } catch (error) {
+      console.warn('로그아웃 API 호출 실패:', error);
+      // 로컬 토큰은 항상 정리
+    } finally {
+      // 로컬 상태 정리
+      setCurrentUser(null);
+      _setCurrentWorkspace(null);
+      _setCurrentTeamProject(null);
+      _setCurrentChatRoom(null);
+      setWorkspaces([]);
+      setError(null);
+      
+      // 토큰 정리
+      tokenManager.clearTokens();
+    }
   }, []);
 
   const setCurrentWorkspaceInternal = useCallback((workspace: Workspace | null) => {
@@ -222,7 +265,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const updatedWorkspace = await workspaceApi.update(id, data);
-      if (currentWorkspace?.id === id) {
+      if (_currentWorkspace?.id === id) {
         _setCurrentWorkspace(updatedWorkspace);
       }
       await refreshWorkspaces();
@@ -234,7 +277,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  }, [currentWorkspace, refreshWorkspaces]);
+  }, [_currentWorkspace, refreshWorkspaces]);
 
   // 워크스페이스 삭제
   const deleteWorkspace = useCallback(async (id: string): Promise<boolean> => {
@@ -242,7 +285,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       await workspaceApi.delete(id);
-      if (currentWorkspace?.id === id) {
+      if (_currentWorkspace?.id === id) {
         _setCurrentWorkspace(null);
       }
       await refreshWorkspaces();
@@ -254,7 +297,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  }, [currentWorkspace, refreshWorkspaces]);
+  }, [_currentWorkspace, refreshWorkspaces]);
 
   // 멤버 내보내기
   const kickMember = useCallback(async (workspaceId: string, memberId: string): Promise<boolean> => {
@@ -309,12 +352,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // 초기 로드 시 첫 번째 워크스페이스 설정
   useEffect(() => {
-    if (currentUser && workspaces.length > 0 && !currentWorkspace) {
+    if (currentUser && workspaces.length > 0 && !_currentWorkspace) {
       const firstWorkspace = workspaces[0];
       _setCurrentWorkspace(firstWorkspace);
       setCurrentUser((prev: User | null) => prev ? {...prev, currentWorkspaceId: firstWorkspace.id} : null);
     }
-  }, [currentUser, workspaces, currentWorkspace]);
+  }, [currentUser, workspaces, _currentWorkspace]);
 
   // Chat functions
   const setCurrentChatRoomById = useCallback((roomId: string | null) => {
@@ -324,14 +367,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // _setCurrentTeamProject(null); 
       return;
     }
-    const room = chatRooms.find(r => r.id === roomId && r.workspaceId === currentWorkspace?.id);
+    const room = chatRooms.find(r => r.id === roomId && r.workspaceId === _currentWorkspace?.id);
     _setCurrentChatRoom(room || null);
     // If a chat room is selected, clear team project selection as they are distinct views
     // _setCurrentTeamProject(null); 
-  }, [chatRooms, currentWorkspace]);
+  }, [chatRooms, _currentWorkspace]);
 
   const createChatRoom = useCallback(async (name: string | undefined, members: ChatRoomMember[], type: 'dm' | 'group'): Promise<ChatRoom | null> => {
-    if (!currentUser || !currentWorkspace) return null;
+    if (!currentUser || !_currentWorkspace) return null;
 
     if (type === 'dm') {
         // Ensure there are exactly two members for a DM, one of whom is the current user.
@@ -343,7 +386,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Check if DM already exists
         const existingDm = chatRooms.find(room => 
             room.type === 'dm' &&
-            room.workspaceId === currentWorkspace.id &&
+            room.workspaceId === _currentWorkspace.id &&
             room.members.length === 2 &&
             room.members.some(m => m.id === currentUser.id) &&
             room.members.some(m => m.id === otherMember.id)
@@ -365,7 +408,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const newRoom: ChatRoom = {
         id: `chat_${type}_${Date.now()}`,
-        workspaceId: currentWorkspace.id,
+        workspaceId: _currentWorkspace.id,
         name: type === 'group' ? name : undefined,
         type,
         members,
@@ -375,18 +418,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setChatRooms(prev => [...prev, newRoom]);
     return newRoom;
-  }, [currentUser, currentWorkspace, chatRooms]);
+  }, [currentUser, _currentWorkspace, chatRooms]);
 
   const deleteChatRoom = useCallback((roomId: string) => {
     setChatRooms(prev => prev.filter(room => room.id !== roomId));
-    if (currentChatRoom?.id === roomId) {
+    if (_currentChatRoom?.id === roomId) {
         _setCurrentChatRoom(null);
     }
     // Note: This is a mock deletion. In a real app, you'd call an API.
     // Also, consider implications: if it's a DM, does it delete for both users?
     // If it's a group, are you leaving or truly deleting (if admin)?
     // For this mock, we'll just remove it from the list.
-  }, [currentChatRoom]);
+  }, [_currentChatRoom]);
 
 
   const getChatRoomName = useCallback((room: ChatRoom, user: User): string => {
@@ -402,15 +445,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isAuthenticated = !!currentUser;
   const allUsersForChat = DEMO_USERS_FOR_CHAT; // Provide all demo users for selection
 
-  const filteredChatRooms = currentWorkspace 
-    ? chatRooms.filter(room => room.workspaceId === currentWorkspace.id)
+  const filteredChatRooms = _currentWorkspace 
+    ? chatRooms.filter(room => room.workspaceId === _currentWorkspace.id)
     : [];
 
   return (
     <AuthContext.Provider value={{ 
         currentUser, login, logout, isAuthenticated, 
-        currentWorkspace, setCurrentWorkspace: setCurrentWorkspaceInternal, 
-        currentTeamProject, setCurrentTeamProject: setCurrentTeamProjectInternal, 
+        currentWorkspace: _currentWorkspace, setCurrentWorkspace: setCurrentWorkspaceInternal, 
+        currentTeamProject: _currentTeamProject, setCurrentTeamProject: setCurrentTeamProjectInternal, 
         updateUserProfile,
         
         // Workspace management
@@ -425,7 +468,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         refreshWorkspaces,
         
         chatRooms: filteredChatRooms, 
-        currentChatRoom, 
+        currentChatRoom: _currentChatRoom, 
         setCurrentChatRoomById,
         createChatRoom,
         deleteChatRoom,

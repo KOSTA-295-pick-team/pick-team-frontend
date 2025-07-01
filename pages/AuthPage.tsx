@@ -3,11 +3,13 @@ import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-do
 import { useAuth } from '../AuthContext';
 import { Button, Input, Card } from '../components'; 
 import { User } from '../types';
+import { authApi, ApiError } from '../services/api';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -25,17 +27,30 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    // Demo login
-    if (email === 'user@example.com' && password === 'password') {
-      const demoUser: User = { 
-        id: 'user_example_com', // Consistent ID for demo
-        email, 
-        name: '테스트 사용자', 
-        profilePictureUrl: 'https://picsum.photos/seed/user1/100/100',
-        mbti: 'INFP',
-        tags: ['#독서광', '#조용한활동선호'],
+    setLoading(true);
+    
+    console.log('🚀 handleSubmit 시작! email:', email, 'password:', password);
+
+    try {
+      console.log('📞 authApi.login 호출 직전!');
+      // 실제 백엔드 API 호출
+      const response = await authApi.login({ email, password });
+      console.log('✅ authApi.login 응답:', response);
+      
+      // 사용자 정보를 User 타입으로 변환
+      const user: User = {
+        id: response.user.id.toString(),
+        email: response.user.email,
+        name: response.user.name,
+        profilePictureUrl: response.user.profilePictureUrl || `https://picsum.photos/seed/${response.user.email}/100/100`,
+        mbti: response.user.mbti || 'ISTP',
+        tags: ['#팀워크', '#협업'], // 기본값, 나중에 백엔드에서 가져올 수 있음
       };
-      auth.login(demoUser);
+
+      // AuthContext에 로그인 정보 저장
+      console.log('🎯 auth.login 호출 시작');
+      await auth.login(user);
+      console.log('🎉 auth.login 완료!');
       
       // 초대코드가 있으면 워크스페이스 참여 진행
       if (inviteCode) {
@@ -58,8 +73,21 @@ export const LoginPage: React.FC = () => {
       }
       
       navigate(from, { replace: true });
-    } else {
-      setError('잘못된 이메일 또는 비밀번호입니다.');
+    } catch (err) {
+      console.error('로그인 오류:', err);
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          setError('이메일 또는 비밀번호가 올바르지 않습니다.');
+        } else if (err.status === 0) {
+          setError('서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.');
+        } else {
+          setError(err.message || '로그인 중 오류가 발생했습니다.');
+        }
+      } else {
+        setError('로그인 중 예상치 못한 오류가 발생했습니다.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -90,7 +118,7 @@ export const LoginPage: React.FC = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder="test1@example.com"
             />
             <Input
               label="비밀번호"
@@ -100,14 +128,23 @@ export const LoginPage: React.FC = () => {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="********"
+              placeholder="password"
             />
             {error && <p className="text-sm text-red-500">{error}</p>}
-            <Button type="submit" className="w-full" variant="primary">
-              로그인
+            <Button 
+              type="submit" 
+              className="w-full" 
+              variant="primary"
+              disabled={loading}
+            >
+              {loading ? '로그인 중...' : '로그인'}
             </Button>
           </form>
           <div className="mt-6">
+            <div className="text-sm text-center text-neutral-500 mb-4">
+              테스트 계정: test1@example.com / password<br/>
+              또는 test2@example.com / password
+            </div>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-neutral-300" />

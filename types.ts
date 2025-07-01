@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   email: string;
@@ -19,10 +18,23 @@ export interface Workspace {
   id: string;
   name: string;
   iconUrl?: string; 
-  ownerId: string;
-  members: Pick<User, 'id' | 'name' | 'profilePictureUrl'>[]; 
-  password?: string; // For workspace password setting
-  inviteCode?: string; // For workspace invite link
+  owner: {
+    id: string;
+    name: string;
+    profileImage?: string;
+    role: string;
+  };
+  passwordProtected: boolean;
+  inviteCode?: string;
+  memberCount: number;
+  members: {
+    id: string;
+    name: string;
+    profileImage?: string;
+    role: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TeamProject {
