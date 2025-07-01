@@ -75,7 +75,7 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
           // 토큰 갱신 실패 시 로그인 페이지로 리다이렉트
           tokenManager.clearTokens();
           if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+            window.location.hash = '/login';
           }
           throw new ApiError(401, '인증이 만료되었습니다. 다시 로그인해주세요.');
         }
@@ -83,7 +83,7 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
         // 리프레시 토큰이 없으면 로그인 페이지로
         tokenManager.clearTokens();
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          window.location.hash = '/login';
         }
         throw new ApiError(401, '인증이 필요합니다. 로그인해주세요.');
       }
@@ -134,12 +134,10 @@ export interface LoginResponse {
 export const authApi = {
   // 로그인
   login: async (data: LoginRequest): Promise<LoginResponse> => {
-    console.log('🔐 authApi.login 시작! data:', data);
     const response = await apiRequest<{success: boolean; message: string; data: LoginResponse}>('/users/login', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    console.log('🔐 authApi.login apiRequest 응답:', response);
     
     if (response.success && response.data) {
       // 토큰 저장
@@ -230,6 +228,20 @@ export const workspaceApi = {
     throw new ApiError(400, response.message || '워크스페이스 참여에 실패했습니다.');
   },
 
+  // 워크스페이스 ID로 직접 참여
+  joinById: async (workspaceId: string, password?: string): Promise<Workspace> => {
+    const response = await apiRequest<{success: boolean; message: string; data: any}>(`/workspaces/${workspaceId}/join`, {
+      method: 'POST',
+      body: JSON.stringify(password ? { password } : {}),
+    });
+    
+    if (response.success && response.data) {
+      return workspaceApi.transformWorkspaceResponse(response.data);
+    }
+    
+    throw new ApiError(400, response.message || '워크스페이스 참여에 실패했습니다.');
+  },
+
   // 내 워크스페이스 목록 조회
   getMyWorkspaces: async (): Promise<Workspace[]> => {
     const response = await apiRequest<{success: boolean; message: string; data: any[]}>('/workspaces/my');
@@ -257,10 +269,7 @@ export const workspaceApi = {
     const response = await apiRequest<{success: boolean; message: string; data: any[]}>(`/workspaces/${id}/members`);
     
     if (response.success && response.data) {
-      return response.data.map((member: any) => ({
-        ...member,
-        id: member.id.toString(),
-      }));
+      return response.data.map((member: any) => userApi.transformUserResponse(member));
     }
     
     throw new ApiError(400, response.message || '워크스페이스 멤버 조회에 실패했습니다.');
@@ -315,6 +324,31 @@ export const workspaceApi = {
     }
   },
 
+  // 블랙리스트 조회
+  getBlacklistedMembers: async (workspaceId: string): Promise<User[]> => {
+    const response = await apiRequest<{success: boolean; message: string; data: any[]}>(`/workspaces/${workspaceId}/blacklist`);
+    
+    if (response.success && response.data) {
+      return response.data.map((member: any) => ({
+        ...member,
+        id: member.id.toString(),
+      }));
+    }
+    
+    throw new ApiError(400, response.message || '블랙리스트 조회에 실패했습니다.');
+  },
+
+  // 멤버 차단 해제
+  unbanMember: async (workspaceId: string, memberId: string): Promise<void> => {
+    const response = await apiRequest<{success: boolean; message: string; data: null}>(`/workspaces/${workspaceId}/members/${memberId}/ban`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.success) {
+      throw new ApiError(400, response.message || '멤버 차단 해제에 실패했습니다.');
+    }
+  },
+
   // 워크스페이스 삭제
   delete: async (id: string): Promise<void> => {
     const response = await apiRequest<{success: boolean; message: string; data: null}>(`/workspaces/${id}`, {
@@ -329,19 +363,39 @@ export const workspaceApi = {
 
 // 사용자 API
 export const userApi = {
+  // 사용자 응답 데이터 변환 헬퍼 함수
+  transformUserResponse: (user: any): User => {
+    return {
+      id: user.id.toString(),
+      email: user.email,
+      name: user.name,
+      age: user.age,
+      mbti: user.mbti,
+      disposition: user.disposition,
+      introduction: user.introduction,
+      portfolio: user.portfolio,
+      preferWorkstyle: user.preferWorkstyle,
+      dislikeWorkstyle: user.dislikeWorkstyle,
+      likes: user.likes,
+      dislikes: user.dislikes,
+      profileImage: user.profileImage,
+      tags: user.tags || [], // UserHashtagList에서 변환된 태그들
+      
+      // 호환성을 위한 매핑
+      bio: user.introduction,
+      portfolioLink: user.portfolio,
+      preferredStyle: user.preferWorkstyle,
+      avoidedStyle: user.dislikeWorkstyle,
+      profilePictureUrl: user.profileImage || `https://picsum.photos/seed/${user.email}/100/100`,
+    };
+  },
+
   // 현재 사용자 정보 조회
   getCurrentUser: async (): Promise<User> => {
     const response = await apiRequest<{success: boolean; message: string; data: any}>('/users/me');
     
     if (response.success && response.data) {
-      return {
-        id: response.data.id.toString(),
-        email: response.data.email,
-        name: response.data.name,
-        profilePictureUrl: response.data.profilePictureUrl || `https://picsum.photos/seed/${response.data.email}/100/100`,
-        mbti: response.data.mbti || 'ISTP',
-        tags: response.data.tags || ['#팀워크', '#협업'],
-      };
+      return userApi.transformUserResponse(response.data);
     }
     
     throw new ApiError(400, response.message || '사용자 정보를 불러올 수 없습니다.');

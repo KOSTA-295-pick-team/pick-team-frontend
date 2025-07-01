@@ -17,11 +17,12 @@ interface AuthContextType {
   workspaces: Workspace[];
   createWorkspace: (data: { name: string; iconUrl?: string; password?: string }) => Promise<Workspace | null>;
   joinWorkspace: (data: { inviteCode: string; password?: string }) => Promise<Workspace | null>;
+  joinWorkspaceById: (workspaceId: string, password?: string) => Promise<Workspace | null>;
   updateWorkspace: (id: string, data: { name?: string; iconUrl?: string; password?: string }) => Promise<boolean>;
   deleteWorkspace: (id: string) => Promise<boolean>;
   kickMember: (workspaceId: string, memberId: string) => Promise<boolean>;
   banMember: (workspaceId: string, memberId: string) => Promise<boolean>;
-  generateNewInviteCode: (workspaceId: string) => Promise<string | null>;
+
   refreshWorkspaces: () => Promise<void>;
   
   // Chat specific context
@@ -119,12 +120,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const userData = await userApi.getCurrentUser();
           setCurrentUser(userData);
           console.log('자동 로그인 성공:', userData.email);
+          
+          // 로그인 성공 후 워크스페이스 목록도 함께 로드
+          await refreshWorkspaces();
         } catch (error) {
           console.warn('자동 로그인 실패:', error);
           tokenManager.clearTokens();
+          setLoading(false);
         }
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     initializeAuth();
@@ -132,19 +138,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // 워크스페이스 목록을 새로고침하는 함수
   const refreshWorkspaces = useCallback(async () => {
-    console.log('🔄 refreshWorkspaces 시작');
     setLoading(true);
     try {
-      console.log('📞 workspaceApi.getMyWorkspaces 호출');
       const fetchedWorkspaces = await workspaceApi.getMyWorkspaces();
-      console.log('✅ API 응답 성공:', fetchedWorkspaces);
-      console.log('📊 워크스페이스 개수:', fetchedWorkspaces.length);
-      
+      console.log('워크스페이스 목록 조회 결과:', fetchedWorkspaces.length, '개', fetchedWorkspaces);
       setWorkspaces(fetchedWorkspaces);
-      console.log('🔄 setWorkspaces 완료');
       setError(null);
+      
+      // 워크스페이스가 0개가 되었을 때는 상태만 업데이트하고, 리다이렉트는 NavigateToInitialView에 위임
+      if (fetchedWorkspaces.length === 0) {
+        console.log('워크스페이스가 없어서 상태 초기화');
+        _setCurrentWorkspace(null);
+        _setCurrentTeamProject(null);
+        _setCurrentChatRoom(null);
+      }
     } catch (err) {
-      console.error('❌ 워크스페이스 로드 실패:', err);
       console.warn('워크스페이스 로드 실패, 폴백 데이터 사용:', err);
       setWorkspaces(FALLBACK_WORKSPACES);
       if (err instanceof ApiError) {
@@ -154,7 +162,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     } finally {
       setLoading(false);
-      console.log('🏁 refreshWorkspaces 완료');
     }
   }, []);
 
@@ -173,9 +180,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     _setCurrentChatRoom(null);
     
     // 로그인 후 워크스페이스 목록 로드 (즉시 실행)
-    console.log('🚀 login 완료 후 refreshWorkspaces 즉시 실행');
     await refreshWorkspaces();
-    console.log('🎯 login 과정 완전 완료');
   }, [refreshWorkspaces]);
 
   const logout = useCallback(async () => {
@@ -259,6 +264,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentUser, refreshWorkspaces]);
 
+  // 워크스페이스 ID로 직접 참여
+  const joinWorkspaceById = useCallback(async (workspaceId: string, password?: string): Promise<Workspace | null> => {
+    if (!currentUser) return null;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const workspace = await workspaceApi.joinById(workspaceId, password);
+      await refreshWorkspaces(); // 목록 새로고침
+      _setCurrentWorkspace(workspace);
+      return workspace;
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : '워크스페이스 참여에 실패했습니다.';
+      setError(errorMessage);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser, refreshWorkspaces]);
+
   // 워크스페이스 업데이트
   const updateWorkspace = useCallback(async (id: string, data: { name?: string; iconUrl?: string; password?: string }): Promise<boolean> => {
     setLoading(true);
@@ -287,8 +312,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await workspaceApi.delete(id);
       if (_currentWorkspace?.id === id) {
         _setCurrentWorkspace(null);
+        _setCurrentTeamProject(null);
+        _setCurrentChatRoom(null);
       }
       await refreshWorkspaces();
+      
+      // refreshWorkspaces에서 이미 처리하지만, 추가 안전장치
+      // 삭제 후 워크스페이스가 0개가 되었을 때 즉시 리다이렉트
+      const remainingWorkspaces = workspaces.filter(ws => ws.id !== id);
+      if (remainingWorkspaces.length === 0) {
+        window.location.hash = '/empty-workspace';
+      }
+      
       return true;
     } catch (err) {
       const errorMessage = err instanceof ApiError ? err.message : '워크스페이스 삭제에 실패했습니다.';
@@ -297,7 +332,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  }, [_currentWorkspace, refreshWorkspaces]);
+  }, [_currentWorkspace, refreshWorkspaces, workspaces]);
 
   // 멤버 내보내기
   const kickMember = useCallback(async (workspaceId: string, memberId: string): Promise<boolean> => {
@@ -305,6 +340,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       await workspaceApi.kickMember(workspaceId, memberId);
+      
+      // 현재 워크스페이스의 멤버 목록에서 해당 멤버 즉시 제거
+      if (_currentWorkspace && _currentWorkspace.id === workspaceId) {
+        const updatedWorkspace = {
+          ..._currentWorkspace,
+          members: _currentWorkspace.members.filter(member => member.id !== memberId)
+        };
+        _setCurrentWorkspace(updatedWorkspace);
+        
+        // 워크스페이스 목록에서도 업데이트
+        setWorkspaces(prev => prev.map(ws => 
+          ws.id === workspaceId ? updatedWorkspace : ws
+        ));
+      }
+      
       await refreshWorkspaces();
       return true;
     } catch (err) {
@@ -314,7 +364,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  }, [refreshWorkspaces]);
+  }, [_currentWorkspace, refreshWorkspaces]);
 
   // 멤버 밴
   const banMember = useCallback(async (workspaceId: string, memberId: string): Promise<boolean> => {
@@ -322,6 +372,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       await workspaceApi.banMember(workspaceId, memberId);
+      
+      // 현재 워크스페이스의 멤버 목록에서 해당 멤버 즉시 제거
+      if (_currentWorkspace && _currentWorkspace.id === workspaceId) {
+        const updatedWorkspace = {
+          ..._currentWorkspace,
+          members: _currentWorkspace.members.filter(member => member.id !== memberId)
+        };
+        _setCurrentWorkspace(updatedWorkspace);
+        
+        // 워크스페이스 목록에서도 업데이트
+        setWorkspaces(prev => prev.map(ws => 
+          ws.id === workspaceId ? updatedWorkspace : ws
+        ));
+      }
+      
       await refreshWorkspaces();
       return true;
     } catch (err) {
@@ -331,33 +396,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setLoading(false);
     }
-  }, [refreshWorkspaces]);
+  }, [_currentWorkspace, refreshWorkspaces]);
 
-  // 새 초대링크 생성
-  const generateNewInviteCode = useCallback(async (workspaceId: string): Promise<string | null> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const newInviteCode = await workspaceApi.generateInviteCode(workspaceId);
-      await refreshWorkspaces();
-      return newInviteCode;
-    } catch (err) {
-      const errorMessage = err instanceof ApiError ? err.message : '초대링크 생성에 실패했습니다.';
-      setError(errorMessage);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, [refreshWorkspaces]);
+  // 새 초대링크 생성 기능은 제거됨 - 워크스페이스 ID 기반 고정 링크 사용
 
-  // 초기 로드 시 첫 번째 워크스페이스 설정
+  // 초기 로드 시 첫 번째 워크스페이스 설정 또는 빈 워크스페이스 페이지로 이동
   useEffect(() => {
-    if (currentUser && workspaces.length > 0 && !_currentWorkspace) {
-      const firstWorkspace = workspaces[0];
-      _setCurrentWorkspace(firstWorkspace);
-      setCurrentUser((prev: User | null) => prev ? {...prev, currentWorkspaceId: firstWorkspace.id} : null);
+    if (currentUser && !loading) {
+      if (workspaces.length > 0 && !_currentWorkspace) {
+        const firstWorkspace = workspaces[0];
+        _setCurrentWorkspace(firstWorkspace);
+        setCurrentUser((prev: User | null) => prev ? {...prev, currentWorkspaceId: firstWorkspace.id} : null);
+                    } else if (workspaces.length === 0) {
+         // 워크스페이스가 없으면 empty-workspace 페이지로 이동
+         _setCurrentWorkspace(null);
+         _setCurrentTeamProject(null);
+         _setCurrentChatRoom(null);
+         window.location.hash = '/empty-workspace';
+       }
     }
-  }, [currentUser, workspaces, _currentWorkspace]);
+  }, [currentUser, workspaces, _currentWorkspace, loading]);
 
   // Chat functions
   const setCurrentChatRoomById = useCallback((roomId: string | null) => {
@@ -460,11 +518,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         workspaces,
         createWorkspace,
         joinWorkspace,
+        joinWorkspaceById,
         updateWorkspace,
         deleteWorkspace,
         kickMember,
         banMember,
-        generateNewInviteCode,
         refreshWorkspaces,
         
         chatRooms: filteredChatRooms, 

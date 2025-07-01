@@ -19,8 +19,8 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (inviteCode) {
-      // 초대코드가 있으면 사용자에게 알림
-      console.log('초대코드로 접속:', inviteCode);
+      // 초대 코드가 있으면 사용자에게 알림
+      console.log('초대 코드로 접속:', inviteCode);
     }
   }, [inviteCode]);
 
@@ -28,14 +28,10 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    
-    console.log('🚀 handleSubmit 시작! email:', email, 'password:', password);
 
     try {
-      console.log('📞 authApi.login 호출 직전!');
       // 실제 백엔드 API 호출
       const response = await authApi.login({ email, password });
-      console.log('✅ authApi.login 응답:', response);
       
       // 사용자 정보를 User 타입으로 변환
       const user: User = {
@@ -48,11 +44,9 @@ export const LoginPage: React.FC = () => {
       };
 
       // AuthContext에 로그인 정보 저장
-      console.log('🎯 auth.login 호출 시작');
       await auth.login(user);
-      console.log('🎉 auth.login 완료!');
       
-      // 초대코드가 있으면 워크스페이스 참여 진행
+      // 초대 코드가 있으면 워크스페이스 참여 진행
       if (inviteCode) {
         try {
           const workspace = await auth.joinWorkspace({
@@ -104,6 +98,9 @@ export const LoginPage: React.FC = () => {
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
                   로그인 후 자동으로 워크스페이스에 참여됩니다.
+                </p>
+                <p className="text-xs text-blue-500 mt-1">
+                  초대 코드: {inviteCode}
                 </p>
               </div>
             )}

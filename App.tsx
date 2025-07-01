@@ -67,7 +67,7 @@ const GlobalHeader: React.FC = () => {
                 onClick={() => { 
                   logout(); 
                   setProfileDropdownOpen(false);
-                  navigate('/login'); 
+                  window.location.hash = '/login'; 
                 }} 
                 className="w-full text-left block px-4 py-2 text-sm hover:bg-neutral-100"
               >
@@ -427,7 +427,7 @@ function App() {
             <Route path="/" element={<NavigateToInitialView />} />
           </Route>
           
-          {/* 초대코드 직접 접속 라우트 - 가장 마지막에 배치하여 다른 라우트와 충돌 방지 */}
+          {/* 초대 링크 접속 라우트 - 초대 코드 기반 */}
           <Route path="/:inviteCode" element={<InviteCodeHandler />} />
           
           <Route path="*" element={<Navigate to="/" />} />
@@ -440,41 +440,26 @@ function App() {
 const NavigateToInitialView: React.FC = () => {
     const { isAuthenticated, currentUser, workspaces, loading } = useAuth();
     
-    console.log('🧭 NavigateToInitialView 실행');
-    console.log('🔑 isAuthenticated:', isAuthenticated);
-    console.log('👤 currentUser:', currentUser);
-    console.log('🏢 workspaces:', workspaces);
-    console.log('📦 workspaces 길이:', workspaces?.length);
-    console.log('⏳ loading:', loading);
-    
     if (!isAuthenticated) {
-        console.log('❌ 인증되지 않음 -> /login으로 이동');
         return <Navigate to="/login" replace />;
     }
     
-    // 로딩 중일 때는 로딩 화면 표시
-    if (loading) {
-        console.log('⏳ 로딩 중 -> 로딩 화면 표시');
+    // 로딩 중이거나 사용자 정보가 없을 때는 로딩 화면 표시
+    if (loading || !currentUser) {
         return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
     }
     
     // 워크스페이스가 없으면 EmptyWorkspacePage로 이동
     if (!workspaces || workspaces.length === 0) {
-        console.log('🚫 워크스페이스 없음 -> /empty-workspace로 이동');
-        console.log('   - workspaces:', workspaces);
-        console.log('   - 타입:', typeof workspaces);
-        console.log('   - 길이:', workspaces?.length);
         return <Navigate to="/empty-workspace" replace />;
     }
     
     // 워크스페이스가 있으면 기본 워크스페이스로 이동
     const defaultWorkspaceId = currentUser?.currentWorkspaceId || workspaces[0]?.id;
-    console.log('✅ 워크스페이스 있음 -> /ws/' + defaultWorkspaceId + '로 이동');
-    console.log('   - 첫 번째 워크스페이스:', workspaces[0]);
     return <Navigate to={`/ws/${defaultWorkspaceId}`} replace />;
 };
 
-// 초대코드로 직접 접속 처리하는 컴포넌트
+// 초대 링크로 직접 접속 처리하는 컴포넌트
 const InviteCodeHandler: React.FC = () => {
   const { inviteCode } = useParams<{ inviteCode: string }>();
   const { joinWorkspace, setCurrentWorkspace, isAuthenticated } = useAuth();
@@ -486,7 +471,7 @@ const InviteCodeHandler: React.FC = () => {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      // 로그인이 안 되어 있으면 로그인 페이지로 이동하면서 초대코드 저장
+      // 로그인이 안 되어 있으면 로그인 페이지로 이동하면서 초대 코드 저장
       navigate(`/login?inviteCode=${inviteCode}`, { replace: true });
       return;
     }
@@ -519,6 +504,8 @@ const InviteCodeHandler: React.FC = () => {
       if (err.message?.includes('비밀번호')) {
         setNeedsPassword(true);
         setError('이 워크스페이스는 비밀번호가 필요합니다.');
+      } else if (err.message?.includes('차단') || err.message?.includes('블랙리스트')) {
+        setError('이 워크스페이스에서 차단된 사용자입니다. 참여할 수 없습니다.');
       } else {
         setError('워크스페이스 참여 중 오류가 발생했습니다.');
       }
@@ -539,7 +526,7 @@ const InviteCodeHandler: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-lg font-medium text-neutral-700">워크스페이스 참여 중...</p>
-          <p className="text-sm text-neutral-500 mt-2">초대코드: {inviteCode}</p>
+          <p className="text-sm text-neutral-500 mt-2">초대 코드: {inviteCode}</p>
         </div>
       </div>
     );
@@ -591,7 +578,7 @@ const InviteCodeHandler: React.FC = () => {
           <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-neutral-900 mb-4">참여 실패</h2>
           <p className="text-sm text-neutral-600 mb-4">{error}</p>
-          <p className="text-xs text-neutral-500 mb-6">초대코드: {inviteCode}</p>
+          <p className="text-xs text-neutral-500 mb-6">초대 코드: {inviteCode}</p>
           <Button onClick={() => navigate('/')} className="w-full">
             홈으로 돌아가기
           </Button>

@@ -63,19 +63,49 @@ const EmptyWorkspacePage: React.FC = () => {
         }
     };
 
+    const extractWorkspaceId = (input: string): { type: 'url' | 'code', value: string } => {
+        const trimmedInput = input.trim();
+        
+        // URL에서 초대 코드 추출: #/abc123def 형태
+        const urlMatch = trimmedInput.match(/#\/([a-zA-Z0-9_-]+)$/);
+        if (urlMatch) {
+            return { type: 'code', value: urlMatch[1] };
+        }
+        
+        // 숫자만 있는 경우 (워크스페이스 ID)
+        if (/^\d+$/.test(trimmedInput)) {
+            return { type: 'url', value: trimmedInput };
+        }
+        
+        // 영문자+숫자 조합 (초대 코드)
+        return { type: 'code', value: trimmedInput };
+    };
+
     const handleJoinWorkspace = async () => {
         setJoinError('');
         
         if (!joinForm.inviteCode.trim()) {
-            setJoinError('초대 코드를 입력해주세요.');
+            setJoinError('초대 코드 또는 초대 링크를 입력해주세요.');
             return;
         }
 
         try {
-            const workspace = await joinWorkspace({
-                inviteCode: joinForm.inviteCode.trim(),
-                password: joinForm.password.trim() || undefined
-            });
+            const { type, value } = extractWorkspaceId(joinForm.inviteCode);
+            let workspace;
+
+            if (type === 'url') {
+                // 워크스페이스 ID로 직접 참여 (기존 기능 유지)
+                workspace = await joinWorkspace({
+                    inviteCode: value,
+                    password: joinForm.password.trim() || undefined
+                });
+            } else {
+                // 초대 코드로 참여
+                workspace = await joinWorkspace({
+                    inviteCode: value,
+                    password: joinForm.password.trim() || undefined
+                });
+            }
 
             if (workspace) {
                 setCurrentWorkspace(workspace);
@@ -85,9 +115,15 @@ const EmptyWorkspacePage: React.FC = () => {
             } else {
                 setJoinError('워크스페이스 참가에 실패했습니다.');
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Join workspace error:', err);
-            setJoinError('워크스페이스 참가 중 오류가 발생했습니다.');
+            if (err.message?.includes('차단') || err.message?.includes('블랙리스트')) {
+                setJoinError('이 워크스페이스에서 차단된 사용자입니다. 참여할 수 없습니다.');
+            } else if (err.message?.includes('비밀번호')) {
+                setJoinError('워크스페이스 비밀번호가 틀렸습니다.');
+            } else {
+                setJoinError(err.message || '워크스페이스 참가 중 오류가 발생했습니다.');
+            }
         }
     };
 
@@ -281,8 +317,8 @@ const EmptyWorkspacePage: React.FC = () => {
                 <div className="space-y-4">
                     <p className="text-sm text-neutral-600">초대 코드를 입력해 워크스페이스에 참가하세요.</p>
                     <Input
-                        label="초대 코드"
-                        placeholder="예: abc123-def456-ghi789"
+                        label="초대 링크 또는 코드"
+                        placeholder="예: http://localhost:5173/#/BD1B4E51 또는 BD1B4E51"
                         value={joinForm.inviteCode}
                         onChange={(e) => setJoinForm(prev => ({ ...prev, inviteCode: e.target.value }))}
                         Icon={LinkIcon}
@@ -290,17 +326,21 @@ const EmptyWorkspacePage: React.FC = () => {
                         required
                     />
                     <Input
-                        label="비밀번호 (필요한 경우)"
+                        label="비밀번호 (선택사항)"
                         type="password"
-                        placeholder="워크스페이스 비밀번호"
+                        placeholder="워크스페이스에 비밀번호가 설정된 경우"
                         value={joinForm.password}
                         onChange={(e) => setJoinForm(prev => ({ ...prev, password: e.target.value }))}
                         Icon={LockClosedIcon}
                         disabled={loading}
                     />
-                    <div className="text-xs text-neutral-500">
-                        <p>• 초대 코드는 워크스페이스 관리자에게 받을 수 있습니다.</p>
-                        <p>• 비밀번호가 설정된 워크스페이스의 경우 추가로 입력해야 합니다.</p>
+                    <div className="text-xs text-neutral-500 bg-neutral-50 p-3 rounded-lg">
+                        <p className="font-medium mb-1">지원하는 형식:</p>
+                        <div className="space-y-1">
+                            <p>• 초대 링크: http://localhost:5173/#/BD1B4E51</p>
+                            <p>• 워크스페이스 ID: 1</p>
+                            <p>• 초대 코드: BD1B4E51</p>
+                        </div>
                     </div>
                     {joinError && <p className="text-sm text-red-500">{joinError}</p>}
                 </div>

@@ -4,12 +4,23 @@ export interface User {
   name?: string;
   age?: number;
   mbti?: string;
-  tags?: string[];
-  bio?: string;
-  portfolioLink?: string;
-  preferredStyle?: string;
-  avoidedStyle?: string;
-  profilePictureUrl?: string;
+  disposition?: string; // 사용자 성향/특성 설명
+  introduction?: string; // 사용자 자기소개
+  portfolio?: string; // 포트폴리오 링크 또는 설명
+  preferWorkstyle?: string; // 선호하는 작업 스타일
+  dislikeWorkstyle?: string; // 기피하는 작업 스타일
+  likes?: string; // 좋아하는 것들
+  dislikes?: string; // 싫어하는 것들
+  profileImage?: string; // 프로필 이미지
+  tags?: string[]; // 해시태그 목록 (UserHashtagList에서 가져온 것)
+  
+  // 호환성을 위해 남겨둠 (기존 코드에서 사용 중)
+  bio?: string; // → introduction으로 매핑됨
+  portfolioLink?: string; // → portfolio로 매핑됨
+  preferredStyle?: string; // → preferWorkstyle로 매핑됨
+  avoidedStyle?: string; // → dislikeWorkstyle로 매핑됨
+  profilePictureUrl?: string; // → profileImage로 매핑됨
+  
   currentWorkspaceId?: string;
   currentTeamProjectId?: string;
 }
@@ -26,6 +37,7 @@ export interface Workspace {
   };
   passwordProtected: boolean;
   inviteCode?: string;
+  url?: string; // 초대 링크용 URL
   memberCount: number;
   members: {
     id: string;
