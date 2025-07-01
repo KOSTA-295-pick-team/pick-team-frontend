@@ -1,8 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { Card, Button, ProfileSummaryCard } from '../components';
+import { Card, Button, ProfileSummaryCard, Modal } from '../components';
 import { TeamProject, User, Workspace } from '../types'; // Updated type import
+import { workspaceApi } from '../services/api';
+import { UserIcon, UsersIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // 목업 데이터 완전 제거 - 실제 API만 사용
 // const MOCK_TEAM_PROJECTS_ALL: TeamProject[] = [];
@@ -15,6 +17,54 @@ export const HomePage: React.FC = () => {
   const { currentUser, currentWorkspace, setCurrentWorkspace, setCurrentTeamProject, workspaces } = useAuth();
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
+
+  // 워크스페이스 멤버 관련 상태
+  const [workspaceMembers, setWorkspaceMembers] = useState<User[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+
+  // 선택된 멤버 상세 정보 상태
+  const [selectedMember, setSelectedMember] = useState<User | null>(null);
+  const [isMemberDetailModalOpen, setIsMemberDetailModalOpen] = useState(false);
+
+  // 워크스페이스 멤버 목록 조회 (전체)
+  const fetchWorkspaceMembers = async () => {
+    if (!currentWorkspace) return;
+    
+    setIsLoadingMembers(true);
+    setMembersError(null);
+    
+    try {
+      const members = await workspaceApi.getMembers(currentWorkspace.id);
+      setWorkspaceMembers(members);
+      setIsMembersModalOpen(true);
+    } catch (error: any) {
+      console.error('워크스페이스 멤버 조회 실패:', error);
+      setMembersError(error.message || '멤버 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  // 워크스페이스 멤버 미리보기 로드 (4명)
+  const loadMembersPreview = async () => {
+    if (!currentWorkspace || workspaceMembers.length > 0) return;
+    
+    try {
+      const members = await workspaceApi.getMembers(currentWorkspace.id);
+      setWorkspaceMembers(members);
+    } catch (error: any) {
+      console.error('워크스페이스 멤버 미리보기 로드 실패:', error);
+      setMembersError(error.message || '멤버 목록을 불러오는데 실패했습니다.');
+    }
+  };
+
+  // 멤버 상세 정보 보기
+  const showMemberDetail = (member: User) => {
+    setSelectedMember(member);
+    setIsMemberDetailModalOpen(true);
+  };
 
   useEffect(() => {
     if (workspaceId && (!currentWorkspace || currentWorkspace.id !== workspaceId)) {
@@ -35,6 +85,13 @@ export const HomePage: React.FC = () => {
     // Clear selected team project when navigating to a workspace home
     setCurrentTeamProject(null);
   }, [workspaceId, currentWorkspace, setCurrentWorkspace, navigate, setCurrentTeamProject, workspaces]);
+
+  // 워크스페이스 멤버 미리보기 로드
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadMembersPreview();
+    }
+  }, [currentWorkspace]);
 
   if (!currentUser || !currentWorkspace) {
     // This should ideally be handled by ProtectedRoute and App.tsx's NavigateToInitialView
@@ -96,19 +153,258 @@ export const HomePage: React.FC = () => {
       </Card>
 
       <Card title="워크스페이스 팀원 알아보기">
-         <div className="text-center py-8">
+        {workspaceMembers.length > 0 ? (
+          <div className="space-y-6">
+            {/* 팀원 미리보기 (최대 4명) */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {workspaceMembers.slice(0, 4).map(member => (
+                <div 
+                  key={member.id} 
+                  className="bg-white border border-neutral-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => showMemberDetail(member)}
+                >
+                  <div className="text-center">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
+                      {member.profileImage || member.profilePictureUrl ? (
+                        <img 
+                          src={member.profileImage || member.profilePictureUrl} 
+                          alt={member.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <UserIcon className="w-8 h-8 text-primary" />
+                      )}
+                    </div>
+                    <h4 className="text-sm font-semibold text-neutral-800 truncate mb-1">
+                      {member.name || '이름 없음'}
+                    </h4>
+                    {member.mbti && (
+                      <span className="inline-block px-2 py-1 bg-primary-light text-primary text-xs rounded-full">
+                        {member.mbti}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 더보기 버튼과 총 멤버 수 */}
+            <div className="text-center space-y-3">
+              <p className="text-sm text-neutral-600">
+                총 {workspaceMembers.length}명의 팀원
+                {workspaceMembers.length > 4 && ` (${workspaceMembers.length - 4}명 더 있음)`}
+              </p>
+              <Button 
+                variant="outline" 
+                size="md"
+                onClick={fetchWorkspaceMembers}
+                disabled={isLoadingMembers}
+              >
+                {isLoadingMembers ? '불러오는 중...' : '전체 팀원 보기'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <UsersIcon className="w-16 h-16 mx-auto text-neutral-400 mb-4" />
             <p className="text-neutral-600 mb-6">
-               현재 워크스페이스에 참여한 팀원들의 프로필을 확인해보세요.
+              아직 워크스페이스 팀원 정보를 불러오지 못했습니다.
             </p>
+            {membersError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-red-600 text-sm">{membersError}</p>
+              </div>
+            )}
             <Button 
-               variant="primary" 
-               size="lg"
-               onClick={() => alert('워크스페이스 팀원 목록 조회 기능 (개발 예정)')}
+              variant="primary" 
+              size="lg"
+              onClick={loadMembersPreview}
+              disabled={isLoadingMembers}
             >
-               팀원 프로필 조회하기
+              {isLoadingMembers ? '불러오는 중...' : '팀원 정보 불러오기'}
             </Button>
-         </div>
+          </div>
+        )}
       </Card>
+
+      {/* 워크스페이스 전체 멤버 목록 모달 (간단한 형태) */}
+      <Modal 
+        isOpen={isMembersModalOpen} 
+        onClose={() => setIsMembersModalOpen(false)}
+        title={`${currentWorkspace.name} 전체 팀원`}
+        size="md"
+      >
+        <div className="space-y-2">
+          {workspaceMembers.length > 0 ? (
+            <div className="max-h-96 overflow-y-auto space-y-2">
+              {workspaceMembers.map(member => (
+                <div 
+                  key={member.id} 
+                  className="flex items-center space-x-3 p-3 rounded-lg hover:bg-neutral-50 cursor-pointer transition-colors"
+                  onClick={() => showMemberDetail(member)}
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
+                    {member.profileImage || member.profilePictureUrl ? (
+                      <img 
+                        src={member.profileImage || member.profilePictureUrl} 
+                        alt={member.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <UserIcon className="w-5 h-5 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-medium text-neutral-800 truncate">
+                      {member.name || '이름 없음'}
+                    </h4>
+                    <p className="text-xs text-neutral-600 truncate">{member.email}</p>
+                  </div>
+                  {member.mbti && (
+                    <span className="text-xs bg-primary-light text-primary px-2 py-1 rounded">
+                      {member.mbti}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <UsersIcon className="w-12 h-12 mx-auto text-neutral-400 mb-3" />
+              <p className="text-neutral-600">워크스페이스에 멤버가 없습니다.</p>
+            </div>
+          )}
+          <div className="text-center text-xs text-neutral-500 mt-4 pt-4 border-t">
+            총 {workspaceMembers.length}명의 팀원 • 클릭하여 상세 정보 보기
+          </div>
+        </div>
+      </Modal>
+
+      {/* 멤버 상세 정보 모달 */}
+      <Modal 
+        isOpen={isMemberDetailModalOpen} 
+        onClose={() => setIsMemberDetailModalOpen(false)}
+        title="팀원 상세 정보"
+        size="md"
+      >
+        {selectedMember && (
+          <div className="space-y-6">
+            {/* 프로필 헤더 */}
+            <div className="text-center">
+              <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
+                {selectedMember.profileImage || selectedMember.profilePictureUrl ? (
+                  <img 
+                    src={selectedMember.profileImage || selectedMember.profilePictureUrl} 
+                    alt={selectedMember.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <UserIcon className="w-12 h-12 text-primary" />
+                )}
+              </div>
+              <h3 className="text-xl font-bold text-neutral-800 mb-2">
+                {selectedMember.name || '이름 없음'}
+              </h3>
+              <p className="text-neutral-600">{selectedMember.email}</p>
+            </div>
+
+            {/* 기본 정보 */}
+            <div className="space-y-4">
+              {selectedMember.mbti && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">성격 유형 (MBTI)</h4>
+                  <span className="inline-block px-3 py-2 bg-primary-light text-primary rounded-lg font-medium">
+                    {selectedMember.mbti}
+                  </span>
+                </div>
+              )}
+
+              {selectedMember.age && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">나이</h4>
+                  <p className="text-neutral-800">{selectedMember.age}세</p>
+                </div>
+              )}
+
+              {selectedMember.disposition && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">성향/특성</h4>
+                  <p className="text-neutral-800 leading-relaxed">{selectedMember.disposition}</p>
+                </div>
+              )}
+
+              {selectedMember.introduction && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">자기소개</h4>
+                  <p className="text-neutral-800 leading-relaxed">{selectedMember.introduction}</p>
+                </div>
+              )}
+
+              {selectedMember.likes && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">좋아하는 것들</h4>
+                  <p className="text-neutral-800 leading-relaxed">{selectedMember.likes}</p>
+                </div>
+              )}
+
+              {selectedMember.dislikes && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">싫어하는 것들</h4>
+                  <p className="text-neutral-800 leading-relaxed">{selectedMember.dislikes}</p>
+                </div>
+              )}
+
+              {selectedMember.preferWorkstyle && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">선호하는 작업 스타일</h4>
+                  <p className="text-neutral-800 leading-relaxed">{selectedMember.preferWorkstyle}</p>
+                </div>
+              )}
+
+              {selectedMember.dislikeWorkstyle && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">기피하는 작업 스타일</h4>
+                  <p className="text-neutral-800 leading-relaxed">{selectedMember.dislikeWorkstyle}</p>
+                </div>
+              )}
+
+              {selectedMember.portfolio && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">포트폴리오</h4>
+                  {selectedMember.portfolio.startsWith('http') ? (
+                    <a 
+                      href={selectedMember.portfolio} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:text-primary-dark underline break-all"
+                    >
+                      {selectedMember.portfolio}
+                    </a>
+                  ) : (
+                    <p className="text-neutral-800 leading-relaxed">{selectedMember.portfolio}</p>
+                  )}
+                </div>
+              )}
+
+              {selectedMember.tags && selectedMember.tags.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-neutral-700 mb-2">관심 태그</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedMember.tags.map((tag, index) => (
+                      <span 
+                        key={index} 
+                        className="px-3 py-1 bg-neutral-100 text-neutral-700 text-sm rounded-full"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
