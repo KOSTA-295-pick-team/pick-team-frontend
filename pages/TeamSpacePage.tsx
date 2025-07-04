@@ -3,7 +3,9 @@ import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Button, Input, Card, Modal, TextArea, VideoCameraIcon, CalendarDaysIcon, PlusCircleIcon, UserIcon, TrashIcon, XCircleIcon } from '../components'; // Removed ChatBubbleIcon
 import { TeamProject, Announcement, CalendarEvent, User, KanbanBoard, KanbanColumn, KanbanCard as KanbanCardType, KanbanComment, BulletinPost, BulletinComment } from '../types';
 import { useAuth } from '../AuthContext';
-import { PaperClipIcon, CheckCircleIcon, Bars3Icon, TableCellsIcon, ClipboardDocumentListIcon, ChevronLeftIcon, ChevronRightIcon, PencilIcon, ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/outline';
+import { PaperClipIcon, CheckCircleIcon, Bars3Icon, TableCellsIcon, ClipboardDocumentListIcon, ChevronLeftIcon, ChevronRightIcon, PencilIcon, ChatBubbleBottomCenterTextIcon, CogIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
+import { fetchKanbanBoard, addKanbanTaskComment, updateKanbanTask } from '../services/kanbanApi';
+import { teamApi } from '../services/teamApi';
 
 // Demo Team Data - 목업 데이터 제거, 실제 API만 사용
 const DEMO_TEAM_PROJECTS_ALL_DETAIL: TeamProject[] = [];
@@ -444,31 +446,33 @@ const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User }> = 
 
 
     useEffect(() => {
-        const demoCommentsUser1: KanbanComment[] = [
-            { id: 'comment1-1', cardId: 'card1', userId: currentUser.id, userName: currentUser.name || '김코딩', text: '이거 오늘까지 마무리 가능할까요?', createdAt: new Date(Date.now() - 3600000) },
-            { id: 'comment1-2', cardId: 'card1', userId: 'otherUser', userName: '박해커', text: '네, 거의 다 됐습니다!', createdAt: new Date(Date.now() - 1800000) },
-        ];
-         const demoCommentsUser3: KanbanComment[] = [
-            { id: 'comment3-1', cardId: 'card3', userId: currentUser.id, userName: currentUser.name || '김코딩', text: 'OAuth 부분에서 이슈가 있는데 같이 봐주실 수 있나요?', createdAt: new Date(Date.now() - 7200000) },
-        ];
+        // TODO: 실제 API 연동 (현재는 목업 데이터 사용)
+        // const loadKanbanBoard = async () => {
+        //     try {
+        //         const kanbanBoard = await fetchKanbanBoard(teamProjectId);
+        //         setBoard(kanbanBoard);
+        //     } catch (error) {
+        //         console.error('Failed to load kanban board:', error);
+        //     }
+        // };
+        // loadKanbanBoard();
 
+        // 임시 목업 데이터 (API 연동 후 제거 예정)
         const demoCards: KanbanCardType[] = [
-            {id: 'card1', title: '로그인 페이지 디자인', description: '사용자 인증 UI 구현', columnId: 'col1', order: 0, assigneeIds: [currentUser.id], comments: demoCommentsUser1, dueDate: new Date(Date.now() + 2 * 86400000)},
-            {id: 'card2', title: 'API 문서 작성', description: 'REST API 명세서 작성', columnId: 'col2', order: 0, assigneeIds: ['backend_dev_id'], dueDate: new Date(Date.now() + 5 * 86400000), comments: demoCommentsUser3, assigneeIds: [currentUser.id, 'backend_dev_id']},
-            {id: 'card3', columnId: 'col2', title: '로그인 기능 개발', description: 'OAuth 2.0 (Google, Kakao) 연동 및 자체 이메일/비밀번호 로그인 기능 구현. JWT 토큰 기반 인증.', order: 0, dueDate: new Date(Date.now() + 5 * 86400000), comments: demoCommentsUser3, assigneeIds: [currentUser.id, 'backend_dev_id']},
-            {id: 'card4', columnId: 'col3', title: '1차 QA 완료', description: '회원가입 및 로그인 플로우, 기본 팀 생성 기능에 대한 QA 완료됨.', order: 0, isApproved: true},
-            {id: 'card5', columnId: 'col3', title: '팀 공지사항 UI 개발', description: '팀 스페이스 내 공지사항 CRUD UI 개발 완료.', order: 1, isApproved: false},
+            {id: 'card1', title: '로그인 페이지 디자인', description: '사용자 인증 UI 구현', columnId: 'col1', order: 0, assigneeIds: [currentUser.id], dueDate: new Date(Date.now() + 2 * 86400000)},
+            {id: 'card2', title: 'API 문서 작성', description: 'REST API 명세서 작성', columnId: 'col2', order: 0, assigneeIds: [currentUser.id], dueDate: new Date(Date.now() + 5 * 86400000)},
+            {id: 'card3', columnId: 'col3', title: '1차 QA 완료', description: '회원가입 및 로그인 플로우 QA 완료.', order: 0, isApproved: true},
         ];
         setBoard({
             id: `kanban-${teamProjectId}`,
             teamProjectId,
             columns: [
-                {id: 'col1', boardId: `kanban-${teamProjectId}`, title: 'To Do', cards: demoCards.filter(c => c.columnId === 'col1').sort((a,b) => a.order - b.order), order: 0},
-                {id: 'col2', boardId: `kanban-${teamProjectId}`, title: 'In Progress', cards: demoCards.filter(c => c.columnId === 'col2').sort((a,b) => a.order - b.order), order: 1},
-                {id: 'col3', boardId: `kanban-${teamProjectId}`, title: 'Done', cards: demoCards.filter(c => c.columnId === 'col3').sort((a,b) => a.order - b.order), order: 2},
+                {id: 'col1', boardId: `kanban-${teamProjectId}`, title: 'To Do', cards: demoCards.filter(c => c.columnId === 'col1'), order: 0},
+                {id: 'col2', boardId: `kanban-${teamProjectId}`, title: 'In Progress', cards: demoCards.filter(c => c.columnId === 'col2'), order: 1},
+                {id: 'col3', boardId: `kanban-${teamProjectId}`, title: 'Done', cards: demoCards.filter(c => c.columnId === 'col3'), order: 2},
             ]
         });
-    }, [teamProjectId, currentUser.id, currentUser.name]);
+    }, [teamProjectId]);
 
     const handleCardClick = (card: KanbanCardType, columnTitle: string) => {
         setSelectedCard(card);
@@ -848,9 +852,16 @@ export const TeamSpacePage: React.FC = () => {
   
   const [team, setTeam] = useState<TeamProject | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
   const [password, setPassword] = useState(''); 
   const [authError, setAuthError] = useState('');
   const [isAuthenticatedForTeam, setIsAuthenticatedForTeam] = useState(false);
+  
+  // 팀 설정 관련 상태
+  const [showTeamSettingsDropdown, setShowTeamSettingsDropdown] = useState(false);
+  const [showLeaveTeamModal, setShowLeaveTeamModal] = useState(false);
+  const [showDeleteTeamModal, setShowDeleteTeamModal] = useState(false);
+  const [teamActionLoading, setTeamActionLoading] = useState(false);
   
   const TABS = [
       { name: '공지', id: 'announcements', icon: <ClipboardDocumentListIcon /> },
@@ -882,35 +893,7 @@ export const TeamSpacePage: React.FC = () => {
   }, [location.search, activeTab]);
 
 
-  useEffect(() => {
-    if (teamProjectId) {
-      if (currentTeamProject && currentTeamProject.id === teamProjectId) {
-        setTeam(currentTeamProject);
-        if (!currentTeamProject.passwordProtected) setIsAuthenticatedForTeam(true);
-        setLoading(false);
-      } else {
-        setLoading(true);
-        setTimeout(() => { 
-          const foundTeam = DEMO_TEAM_PROJECTS_ALL_DETAIL.find(t => t.id === teamProjectId && t.workspaceId === workspaceId);
-          if (foundTeam) {
-            setTeam(foundTeam);
-            setCurrentTeamProject(foundTeam); 
-            if (!foundTeam.passwordProtected) {
-              setIsAuthenticatedForTeam(true);
-            } else {
-              setIsAuthenticatedForTeam(false); 
-            }
-          } else {
-            setTeam(null); 
-          }
-          setLoading(false);
-        }, 300);
-      }
-    } else {
-        setTeam(null);
-        setLoading(false);
-    }
-  }, [workspaceId, teamProjectId, currentTeamProject, setCurrentTeamProject]);
+  // 기존의 데모 데이터 사용 로직 제거 - 실제 API 호출로 대체됨
 
 
   const handlePasswordSubmit = () => {
@@ -945,7 +928,118 @@ export const TeamSpacePage: React.FC = () => {
     }
   }, [team, setCurrentTeamProject]);
 
+  // 팀 탈퇴 기능
+  const handleLeaveTeam = useCallback(async () => {
+    if (!team || !teamProjectId) return;
+    
+    try {
+      setTeamActionLoading(true);
+      await teamApi.leaveTeam(teamProjectId);
+      setShowLeaveTeamModal(false);
+      // 팀 탈퇴 성공 시 워크스페이스 홈으로 이동
+      navigate(`/ws/${workspaceId}`);
+    } catch (error) {
+      console.error('팀 탈퇴 실패:', error);
+      alert('팀 탈퇴에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setTeamActionLoading(false);
+    }
+  }, [team, teamProjectId, workspaceId, navigate]);
+
+  // 팀 삭제 기능
+  const handleDeleteTeam = useCallback(async () => {
+    if (!team || !teamProjectId) return;
+    
+    try {
+      setTeamActionLoading(true);
+      await teamApi.deleteTeam(teamProjectId);
+      setShowDeleteTeamModal(false);
+      // 팀 삭제 성공 시 워크스페이스 홈으로 이동
+      navigate(`/ws/${workspaceId}`);
+    } catch (error) {
+      console.error('팀 삭제 실패:', error);
+      alert('팀 삭제에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setTeamActionLoading(false);
+    }
+  }, [team, teamProjectId, workspaceId, navigate]);
+
+  // 현재 사용자가 팀장인지 확인하는 함수
+  const isTeamLeader = useCallback(() => {
+    if (!team || !currentUser) {
+      console.log('팀장 권한 확인 실패: team 또는 currentUser 없음');
+      return false;
+    }
+    
+    // 임시로 모든 팀 멤버가 팀장 권한을 가지도록 설정 (테스트용)
+    const hasLeaderPermission = team.members.some(member => member.id === currentUser.id);
+    console.log('팀장 권한 확인:', { 
+      currentUserId: currentUser.id, 
+      teamMembers: team.members.map(m => m.id), 
+      hasLeaderPermission 
+    });
+    
+    // 테스트용: 팀 멤버라면 팀장 권한 부여
+    return hasLeaderPermission;
+  }, [team, currentUser]);
+
+  // 팀 데이터 로드 함수
+  const loadTeamData = async () => {
+    console.log('팀 데이터 로드 시작:', teamProjectId);
+    
+    if (!teamProjectId) {
+      console.log('팀 ID 없음');
+      setTeam(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      // 실제 API 호출 - 백엔드에서 이미 멤버 정보도 함께 반환함
+      const teamData = await teamApi.getTeam(teamProjectId);
+      console.log('팀 데이터 로드 성공:', teamData);
+      
+      setTeam(teamData);
+      setCurrentTeamProject(teamData);
+      
+      // 비밀번호 보호가 없다면 바로 인증 완료
+      if (!teamData.passwordProtected) {
+        setIsAuthenticatedForTeam(true);
+      }
+    } catch (error) {
+      console.error('팀 데이터 로드 실패:', error);
+      setError('팀 정보를 불러오는데 실패했습니다.');
+      setTeam(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeamData();
+  }, [workspaceId, teamProjectId]);
+
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showTeamSettingsDropdown) {
+        const target = event.target as Element;
+        // 드롭다운 내부나 톱니바퀴 버튼 클릭이 아닌 경우만 닫기
+        if (!target.closest('[data-dropdown="team-settings"]')) {
+          setShowTeamSettingsDropdown(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showTeamSettingsDropdown]);
+
   if (loading) return <div className="p-6 text-center">팀 정보를 불러오는 중...</div>;
+  if (error) return <div className="p-6 text-center text-red-500">{error}</div>;
   if (!team) return <div className="p-6 text-center text-red-500">팀을 찾을 수 없습니다. <Link to={`/ws/${workspaceId || ''}`} className="text-primary hover:underline">워크스페이스 홈으로</Link></div>;
   if (!currentUser) return <p className="p-6">로그인이 필요합니다.</p>; 
 
@@ -984,7 +1078,60 @@ export const TeamSpacePage: React.FC = () => {
   return (
     <div className="space-y-6">
       <Card title={`팀 스페이스: ${team.name}`} 
-            actions={team.progress !== undefined ? <span className="text-sm text-neutral-500">진행도: {team.progress}%</span> : null}>
+            actions={
+              <div className="flex items-center space-x-4">
+                {team.progress !== undefined && (
+                  <span className="text-sm text-neutral-500">진행도: {team.progress}%</span>
+                )}
+                {/* 팀 설정 드롭다운 */}
+                <div className="relative" data-dropdown="team-settings">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowTeamSettingsDropdown(!showTeamSettingsDropdown)}
+                    className="p-1"
+                    data-dropdown="team-settings"
+                  >
+                    <CogIcon className="w-5 h-5" />
+                  </Button>
+                  
+                  {showTeamSettingsDropdown && (
+                    <div 
+                      className="absolute right-0 mt-2 w-48 bg-white border border-neutral-200 rounded-md shadow-lg z-20"
+                      data-dropdown="team-settings"
+                    >
+                      <div className="py-1" data-dropdown="team-settings">
+                        <button
+                          onClick={() => {
+                            setShowTeamSettingsDropdown(false);
+                            setShowLeaveTeamModal(true);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 flex items-center space-x-2"
+                          data-dropdown="team-settings"
+                        >
+                          <ArrowRightOnRectangleIcon className="w-4 h-4" />
+                          <span>팀 탈퇴</span>
+                        </button>
+                        
+                        {isTeamLeader() && (
+                          <button
+                            onClick={() => {
+                              setShowTeamSettingsDropdown(false);
+                              setShowDeleteTeamModal(true);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                            data-dropdown="team-settings"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                            <span>팀 삭제</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            }>
         <div className="mb-6 border-b border-neutral-200">
           <nav className="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto" aria-label="Tabs">
             {TABS.map((tab) => (
@@ -1004,6 +1151,101 @@ export const TeamSpacePage: React.FC = () => {
         </div>
         {contentToRender}
       </Card>
+      
+      {/* 팀 탈퇴 확인 모달 */}
+      <Modal
+        isOpen={showLeaveTeamModal}
+        onClose={() => setShowLeaveTeamModal(false)}
+        title="팀 탈퇴 확인"
+        footer={
+          <div className="flex justify-end space-x-2">
+            <Button 
+              variant="ghost" 
+              onClick={() => setShowLeaveTeamModal(false)}
+              disabled={teamActionLoading}
+            >
+              취소
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={handleLeaveTeam}
+              disabled={teamActionLoading}
+            >
+              {teamActionLoading ? '처리 중...' : '탈퇴하기'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-center space-x-3">
+            <div className="flex-shrink-0">
+              <ArrowRightOnRectangleIcon className="w-8 h-8 text-orange-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-neutral-900">
+                정말로 팀을 탈퇴하시겠습니까?
+              </h3>
+              <p className="text-sm text-neutral-500">
+                팀 탈퇴 시 다시 팀에 참여하려면 팀 초대를 받아야 합니다.
+              </p>
+            </div>
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded-md p-4">
+            <p className="text-sm text-orange-700">
+              ⚠️ 팀 탈퇴 후에는 다시 팀에 참여하려면 팀 가입을 다시 해야 합니다.
+            </p>
+          </div>
+        </div>
+      </Modal>
+      
+      {/* 팀 삭제 확인 모달 */}
+      <Modal
+        isOpen={showDeleteTeamModal}
+        onClose={() => setShowDeleteTeamModal(false)}
+        title="팀 삭제 확인"
+        footer={
+          <div className="flex justify-end space-x-2">
+            <Button 
+              variant="ghost" 
+              onClick={() => setShowDeleteTeamModal(false)}
+              disabled={teamActionLoading}
+            >
+              취소
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={() => {
+                console.log('삭제하기 버튼 클릭됨');
+                handleDeleteTeam();
+              }}
+              disabled={teamActionLoading}
+            >
+              {teamActionLoading ? '처리 중...' : '삭제하기'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-center space-x-3">
+            <div className="flex-shrink-0">
+              <TrashIcon className="w-8 h-8 text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-neutral-900">
+                정말로 팀을 삭제하시겠습니까?
+              </h3>
+              <p className="text-sm text-neutral-500">
+                팀 삭제는 되돌릴 수 없으며, 모든 데이터가 영구적으로 삭제됩니다.
+              </p>
+            </div>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <p className="text-sm text-red-700">
+              🚨 <strong>주의:</strong> 팀의 모든 칸반 보드, 게시글, 일정, 공지사항이 삭제됩니다.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

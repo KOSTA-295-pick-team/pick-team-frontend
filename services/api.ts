@@ -27,7 +27,7 @@ class ApiError extends Error {
 }
 
 // HTTP 요청 래퍼 함수
-async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = tokenManager.getAccessToken();
   
@@ -402,4 +402,7 @@ export const userApi = {
   },
 };
 
-export { ApiError }; 
+export { ApiError };
+
+// 다른 API 서비스들도 함께 export
+export { teamApi } from './teamApi'; 
