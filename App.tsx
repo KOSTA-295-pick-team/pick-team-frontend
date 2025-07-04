@@ -16,10 +16,11 @@ import {
     ChatBubbleIcon, VideoCameraIcon, CalendarDaysIcon, Modal, Input, Button, ItemListSelector,
     ComponentTrashIcon, TextArea,
     CreateWorkspaceModal, JoinWorkspaceModal, NewChatModal, 
-    NewVideoConferenceModal, TeamActionModal, WorkspaceSettingsModal
+    NewVideoConferenceModal, TeamActionModal, TeamCreateModal, WorkspaceSettingsModal
 } from './components';
 import { Workspace, TeamProject, User as UserType, ChatRoom, ChatRoomMember } from './types';
 import { MagnifyingGlassIcon, HashtagIcon, LockClosedIcon, UserGroupIcon, ArrowLeftIcon, Cog6ToothIcon, LinkIcon, ShieldCheckIcon, UserMinusIcon, NoSymbolIcon, CheckCircleIcon, XMarkIcon, ChevronDownIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { teamApi } from './services/api';
 
 
 // Mock Data for non-chat related entities
@@ -158,6 +159,7 @@ const TeamProjectSidebar: React.FC = () => {
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
   const [isTeamActionModalOpen, setIsTeamActionModalOpen] = useState(false);
+  const [isTeamCreateModalOpen, setIsTeamCreateModalOpen] = useState(false);
   const [isWorkspaceSettingsModalOpen, setIsWorkspaceSettingsModalOpen] = useState(false);
   
   const [confirmDeleteInfo, setConfirmDeleteInfo] = useState<{type: 'chat' | 'video', id: string, name: string} | null>(null);
@@ -165,11 +167,40 @@ const TeamProjectSidebar: React.FC = () => {
   const initialVideoRooms: { id: string; name: string }[] = [];
   const [videoRooms, setVideoRooms] = useState(initialVideoRooms);
 
+  // 팀 목록 상태 추가
+  const [teamsForCurrentWorkspace, setTeamsForCurrentWorkspace] = useState<TeamProject[]>([]);
+  const [isLoadingTeams, setIsLoadingTeams] = useState(false);
+
+  // 팀 목록 로드 함수
+  const loadTeams = async () => {
+    if (!currentWorkspace) return;
+    
+    setIsLoadingTeams(true);
+    try {
+      const teamList = await teamApi.getTeamsByWorkspace(currentWorkspace.id);
+      setTeamsForCurrentWorkspace(teamList);
+    } catch (error) {
+      console.error('팀 목록 로드 실패:', error);
+      setTeamsForCurrentWorkspace([]);
+    } finally {
+      setIsLoadingTeams(false);
+    }
+  };
+
+  // 워크스페이스 변경 시 팀 목록 로드
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTeams();
+    }
+  }, [currentWorkspace]);
+
+  // 팀 생성 완료 후 콜백
+  const handleTeamCreated = (newTeam: TeamProject) => {
+    setTeamsForCurrentWorkspace(prev => [...prev, newTeam]);
+    setIsTeamCreateModalOpen(false);
+  };
 
   if (!currentWorkspace || !currentUser) return null;
-
-  // 목업 데이터 제거 - 실제 API에서 팀 프로젝트 목록을 가져와야 함
-  const teamsForCurrentWorkspace: TeamProject[] = []; // MOCK_TEAM_PROJECTS_APP 대신 빈 배열
   const groupChats = chatRooms.filter(cr => cr.type === 'group');
   const directMessages = chatRooms.filter(cr => cr.type === 'dm');
 
@@ -233,6 +264,10 @@ const TeamProjectSidebar: React.FC = () => {
       
       <div className="mb-3">
         <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1 px-2">팀 프로젝트 & 기능</h3>
+        {isLoadingTeams ? (
+          <div className="px-3 py-2 text-xs text-neutral-500">팀 목록 로딩 중...</div>
+        ) : (
+          <>
         {teamsForCurrentWorkspace.map(tp => (
           <button
             key={tp.id}
@@ -246,12 +281,25 @@ const TeamProjectSidebar: React.FC = () => {
             </span>
           </button>
         ))}
+            {teamsForCurrentWorkspace.length === 0 && !isLoadingTeams && (
+              <div className="px-3 py-2 text-xs text-neutral-500">팀이 없습니다.</div>
+            )}
+          </>
+        )}
+        <div className="mt-1 space-y-1">
+          <button 
+            className="w-full text-sm text-primary hover:underline py-2 border border-primary-light rounded-md hover:bg-primary-light/10"
+            onClick={() => setIsTeamCreateModalOpen(true)}
+          >
+            새로운 팀 만들기
+          </button>
          <button 
-            className="w-full mt-1 text-sm text-primary hover:underline py-2 border border-primary-light rounded-md hover:bg-primary-light/10"
+            className="w-full text-sm text-neutral-600 hover:text-primary hover:underline py-2 border border-neutral-200 rounded-md hover:bg-neutral-50"
             onClick={() => setIsTeamActionModalOpen(true)}
         >
-            새로운 팀 만들기/참여
+            기존 팀 참여하기
         </button>
+        </div>
       </div>
 
       <div className="mt-3 pt-3 border-t border-neutral-200">
@@ -350,7 +398,16 @@ const TeamProjectSidebar: React.FC = () => {
 
       <NewChatModal isOpen={isNewChatModalOpen} onClose={() => setIsNewChatModalOpen(false)} />
       <NewVideoConferenceModal isOpen={isNewVideoConferenceModalOpen} onClose={() => setIsNewVideoConferenceModalOpen(false)} />
-      <TeamActionModal isOpen={isTeamActionModalOpen} onClose={() => setIsTeamActionModalOpen(false)} />
+      <TeamActionModal 
+        isOpen={isTeamActionModalOpen} 
+        onClose={() => setIsTeamActionModalOpen(false)} 
+        initialStep="joinList"
+      />
+      <TeamCreateModal 
+        isOpen={isTeamCreateModalOpen} 
+        onClose={() => setIsTeamCreateModalOpen(false)} 
+        onTeamCreated={handleTeamCreated}
+      />
       <WorkspaceSettingsModal isOpen={isWorkspaceSettingsModalOpen} onClose={() => setIsWorkspaceSettingsModalOpen(false)} />
 
       {confirmDeleteInfo && (

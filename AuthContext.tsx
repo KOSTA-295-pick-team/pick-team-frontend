@@ -22,6 +22,7 @@ interface AuthContextType {
   deleteWorkspace: (id: string) => Promise<boolean>;
   kickMember: (workspaceId: string, memberId: string) => Promise<boolean>;
   banMember: (workspaceId: string, memberId: string) => Promise<boolean>;
+  unbanMember: (workspaceId: string, memberId: string) => Promise<boolean>;
 
   refreshWorkspaces: () => Promise<void>;
   
@@ -398,6 +399,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [_currentWorkspace, refreshWorkspaces]);
 
+  // 멤버 차단 해제
+  const unbanMember = useCallback(async (workspaceId: string, memberId: string): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+    try {
+      await workspaceApi.unbanMember(workspaceId, memberId);
+      await refreshWorkspaces();
+      return true;
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : '멤버 차단 해제에 실패했습니다.';
+      setError(errorMessage);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshWorkspaces]);
+
   // 새 초대링크 생성 기능은 제거됨 - 워크스페이스 ID 기반 고정 링크 사용
 
   // 초기 로드 시 첫 번째 워크스페이스 설정 또는 빈 워크스페이스 페이지로 이동
@@ -523,6 +541,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteWorkspace,
         kickMember,
         banMember,
+        unbanMember,
         refreshWorkspaces,
         
         chatRooms: filteredChatRooms, 
