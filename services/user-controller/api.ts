@@ -116,15 +116,16 @@ export const userControllerApi = {
 
   // 이메일(ID) 중복 검사
   checkDuplicateId: async (data: CheckDuplicateIdRequest): Promise<boolean> => {
-    const response = await userApiRequest<
-      ApiResponse<{ isDuplicate: boolean }>
-    >("/users/check-id", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    const response = await userApiRequest<ApiResponse<boolean>>(
+      "/users/check-id",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
 
-    if (response.success && response.data) {
-      return response.data.isDuplicate;
+    if (response.success && response.data !== undefined) {
+      return !response.data; // 반대로 반환
     }
 
     throw new UserApiError(
@@ -137,7 +138,7 @@ export const userControllerApi = {
   validatePassword: async (
     data: ValidatePasswordRequest
   ): Promise<ValidationResponse> => {
-    const response = await userApiRequest<ApiResponse<ValidationResponse>>(
+    const response = await userApiRequest<ApiResponse<boolean>>(
       "/users/validate-password",
       {
         method: "POST",
@@ -145,8 +146,13 @@ export const userControllerApi = {
       }
     );
 
-    if (response.success && response.data) {
-      return response.data;
+    if (response.success && response.data !== undefined) {
+      return {
+        isValid: response.data,
+        message: response.data
+          ? "유효한 비밀번호입니다."
+          : "비밀번호가 유효하지 않습니다.",
+      };
     }
 
     throw new UserApiError(

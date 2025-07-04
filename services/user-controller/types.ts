@@ -2,7 +2,8 @@
 export interface RegisterUserRequest {
   email: string;
   password: string;
-  name: string;
+  confirmPassword: string; // 백엔드에서 필수로 요구
+  name?: string; // 선택적으로 변경
   age?: number;
   mbti?: string;
   disposition?: string;
