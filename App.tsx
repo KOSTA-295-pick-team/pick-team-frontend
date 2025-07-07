@@ -11,13 +11,13 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
-import { LoginPage, SignupPage } from "./pages/AuthPage";
-import { EmailVerificationPage } from "./pages/EmailVerificationPage";
+import { LoginPage, SignupPage } from "./pages/user/AuthPage";
+import { EmailVerificationPage } from "./pages/user/EmailVerificationPage";
 import {
   MyPage,
   ProfileEditPage,
   AccountSettingsPage,
-} from "./pages/MyPageStack";
+} from "./pages/user/MyPageStack";
 import { UserProfileViewPage } from "./pages/UserProfilePage";
 import {
   AutoTeamPage,

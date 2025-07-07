@@ -18,6 +18,7 @@ import {
   ApiResponse,
   ValidationResponse,
   EmailVerificationResponse,
+  LogoutResponse,
 } from "./types";
 import { transformUserResponse, getClientInfo } from "./utils";
 import { User } from "../../types";
@@ -97,9 +98,9 @@ async function userApiRequest<T>(
 
 // UserController API 서비스
 export const userControllerApi = {
-  // 회원가입
-  registerUser: async (data: RegisterUserRequest): Promise<User> => {
-    const response = await userApiRequest<ApiResponse<UserResponse>>(
+  // 회원가입 (USER_API_DOCUMENTATION 기준으로 수정)
+  registerUser: async (data: RegisterUserRequest): Promise<void> => {
+    const response = await userApiRequest<ApiResponse<null>>(
       "/users/register",
       {
         method: "POST",
@@ -107,14 +108,14 @@ export const userControllerApi = {
       }
     );
 
-    if (response.success && response.data) {
-      return transformUserResponse(response.data);
+    if (response.success) {
+      return; // 성공 시 void 반환
     }
 
     throw new UserApiError(400, response.message || "회원가입에 실패했습니다.");
   },
 
-  // 이메일(ID) 중복 검사
+  // 이메일(ID) 중복 검사 (USER_API_DOCUMENTATION 기준으로 수정)
   checkDuplicateId: async (data: CheckDuplicateIdRequest): Promise<boolean> => {
     const response = await userApiRequest<ApiResponse<boolean>>(
       "/users/check-id",
@@ -125,7 +126,7 @@ export const userControllerApi = {
     );
 
     if (response.success && response.data !== undefined) {
-      return !response.data; // 반대로 반환
+      return response.data; // API 문서에서 true면 사용 가능
     }
 
     throw new UserApiError(
@@ -172,8 +173,8 @@ export const userControllerApi = {
       body: JSON.stringify(data),
     });
 
-    if (response.success && response.data) {
-      return response.data;
+    if (response.success) {
+      return response.data || {}; // data가 null이어도 성공으로 처리
     }
 
     throw new UserApiError(
@@ -184,7 +185,7 @@ export const userControllerApi = {
 
   // 이메일 인증 코드 검증
   verifyEmail: async (data: VerifyEmailRequest): Promise<boolean> => {
-    const response = await userApiRequest<ApiResponse<{ isVerified: boolean }>>(
+    const response = await userApiRequest<ApiResponse<boolean>>(
       "/users/email/verify",
       {
         method: "POST",
@@ -192,8 +193,8 @@ export const userControllerApi = {
       }
     );
 
-    if (response.success && response.data) {
-      return response.data.isVerified;
+    if (response.success && response.data !== undefined) {
+      return response.data; // API 문서: data는 boolean (true)
     }
 
     throw new UserApiError(
@@ -248,11 +249,23 @@ export const userControllerApi = {
   },
 
   // 기본 로그아웃
-  logout: async (): Promise<void> => {
+  logout: async (): Promise<LogoutResponse> => {
     try {
-      await userApiRequest<ApiResponse<null>>("/users/logout", {
-        method: "POST",
-      });
+      const response = await userApiRequest<ApiResponse<LogoutResponse>>(
+        "/users/logout",
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.success && response.data) {
+        return response.data;
+      }
+
+      throw new UserApiError(
+        400,
+        response.message || "로그아웃에 실패했습니다."
+      );
     } finally {
       // 로컬 토큰은 항상 삭제
       userTokenManager.clearTokens();
@@ -260,16 +273,28 @@ export const userControllerApi = {
   },
 
   // 개선된 로그아웃 (클라이언트 정보 포함)
-  logoutWithClientInfo: async (): Promise<void> => {
+  logoutWithClientInfo: async (): Promise<LogoutResponse> => {
     const requestData: LogoutWithClientInfoRequest = {
       clientInfo: getClientInfo(),
     };
 
     try {
-      await userApiRequest<ApiResponse<null>>("/users/logout/enhanced", {
-        method: "POST",
-        body: JSON.stringify(requestData),
-      });
+      const response = await userApiRequest<ApiResponse<LogoutResponse>>(
+        "/users/logout/enhanced",
+        {
+          method: "POST",
+          body: JSON.stringify(requestData),
+        }
+      );
+
+      if (response.success && response.data) {
+        return response.data;
+      }
+
+      throw new UserApiError(
+        400,
+        response.message || "로그아웃에 실패했습니다."
+      );
     } finally {
       // 로컬 토큰은 항상 삭제
       userTokenManager.clearTokens();

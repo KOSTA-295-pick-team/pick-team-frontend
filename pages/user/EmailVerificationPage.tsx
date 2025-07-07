@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { Button, Input, Card } from "../components";
-import { userControllerApi, UserApiError } from "../services/user-controller";
+import { Button, Input, Card } from "../../components";
+import {
+  userControllerApi,
+  UserApiError,
+} from "../../services/user-controller";
 
 export const EmailVerificationPage: React.FC = () => {
   const [verificationCode, setVerificationCode] = useState("");

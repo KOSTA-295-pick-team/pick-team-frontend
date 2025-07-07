@@ -357,8 +357,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const logout = useCallback(async () => {
     try {
       // UserController API의 향상된 로그아웃 사용 (클라이언트 정보 포함)
-      await userControllerApi.logoutWithClientInfo();
-      console.log("향상된 로그아웃 성공");
+      const logoutResult = await userControllerApi.logoutWithClientInfo();
+      console.log("향상된 로그아웃 성공:", logoutResult);
     } catch (error) {
       console.warn("로그아웃 API 호출 실패:", error);
       // 로컬 토큰은 항상 정리

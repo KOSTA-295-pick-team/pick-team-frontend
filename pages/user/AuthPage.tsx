@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Link,
   useNavigate,
   useLocation,
   useSearchParams,
 } from "react-router-dom";
-import { useAuth } from "../AuthContext";
-import { Button, Input, Card } from "../components";
-import { userControllerApi, UserApiError } from "../services/user-controller";
+import { useAuth } from "../../AuthContext";
+import { Button, Input, Card } from "../../components";
+import {
+  userControllerApi,
+  UserApiError,
+} from "../../services/user-controller";
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -187,10 +190,21 @@ export const SignupPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1); // 1: Form, 2: Email Sent
-  const [isEmailDuplicate, setIsEmailDuplicate] = useState(false);
+  const [success, setSuccess] = useState("");
+  const [isCodeSent, setIsCodeSent] = useState(false); // 인증코드 발송 여부
+  const [isEmailVerified, setIsEmailVerified] = useState(false); // 이메일 인증 완료 여부
+
+  // 로딩 상태들
+  const [loading, setLoading] = useState({
+    passwordValidation: false,
+    sendCode: false,
+    verifyCode: false,
+    register: false,
+  });
+
+  // 비밀번호 유효성 검증 결과
   const [passwordValidation, setPasswordValidation] = useState<{
     isValid: boolean;
     message?: string;
@@ -198,196 +212,187 @@ export const SignupPage: React.FC = () => {
 
   const navigate = useNavigate();
 
-  // 이메일 중복 검사 (실시간)
-  const checkEmailDuplicate = async (emailToCheck: string) => {
-    if (!emailToCheck || !emailToCheck.includes("@")) return;
-
-    try {
-      const isDuplicate = await userControllerApi.checkDuplicateId({
-        email: emailToCheck,
-      });
-      setIsEmailDuplicate(isDuplicate);
-      if (isDuplicate) {
-        setError("이미 사용 중인 이메일 주소입니다.");
-      } else {
-        setError("");
-      }
-    } catch (err) {
-      console.warn("이메일 중복 검사 실패:", err);
-    }
-  };
-
-  // 비밀번호 유효성 검사 (실시간)
+  // 실시간 비밀번호 유효성 검사 (서버)
   const validatePassword = async (passwordToCheck: string) => {
     if (!passwordToCheck) {
       setPasswordValidation(null);
       return;
     }
 
+    setLoading((prev) => ({ ...prev, passwordValidation: true }));
+
     try {
-      const validation = await userControllerApi.validatePassword({
+      const result = await userControllerApi.validatePassword({
         password: passwordToCheck,
       });
-      setPasswordValidation(validation);
-      if (!validation.isValid && validation.message) {
-        setError(validation.message);
-      } else if (validation.isValid) {
-        setError("");
-      }
+      setPasswordValidation(result);
     } catch (err) {
       console.warn("비밀번호 유효성 검사 실패:", err);
+      setPasswordValidation({ isValid: false, message: "비밀번호 검증 실패" });
+    } finally {
+      setLoading((prev) => ({ ...prev, passwordValidation: false }));
     }
   };
 
-  // 이메일 변경 시 중복 검사
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newEmail = e.target.value;
-    setEmail(newEmail);
-    setError(""); // 기존 에러 초기화
+  // 디바운싱을 위한 타이머 ref
+  const passwordValidationTimer = useRef<NodeJS.Timeout | null>(null);
 
-    // 이메일이 있고 @가 포함되어 있을 때만 검사
-    if (newEmail && newEmail.includes("@")) {
-      // 디바운싱을 위한 타이머
-      setTimeout(() => {
-        checkEmailDuplicate(newEmail);
-      }, 500);
-    } else {
-      setIsEmailDuplicate(false);
-    }
-  };
-
-  // 비밀번호 변경 시 유효성 검사
+  // 비밀번호 변경 핸들러 (디바운싱 적용)
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newPassword = e.target.value;
     setPassword(newPassword);
-    setError(""); // 기존 에러 초기화
 
-    // 비밀번호가 있을 때만 검사
-    if (newPassword) {
-      // 디바운싱을 위한 타이머
-      setTimeout(() => {
-        validatePassword(newPassword);
-      }, 500);
-    } else {
-      setPasswordValidation(null);
+    // 이전 타이머 취소
+    if (passwordValidationTimer.current) {
+      clearTimeout(passwordValidationTimer.current);
+    }
+
+    // 새 타이머 설정
+    passwordValidationTimer.current = setTimeout(() => {
+      validatePassword(newPassword);
+    }, 500);
+  };
+
+  // 비밀번호 확인 변경 핸들러
+  const handleConfirmPasswordChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const newConfirmPassword = e.target.value;
+    setConfirmPassword(newConfirmPassword);
+  };
+
+  // 1단계: 이메일 인증 코드 발송 (이메일 검증 포함)
+  const sendVerificationCode = async () => {
+    setError("");
+    setSuccess("");
+    setLoading((prev) => ({ ...prev, sendCode: true }));
+
+    try {
+      // 서버에서 이메일 형식, 중복 여부 모두 검증하고 인증 코드 발송
+      await userControllerApi.requestEmailVerification({ email });
+      setIsCodeSent(true);
+      setSuccess("인증 메일이 발송되었습니다.");
+      console.log("이메일 인증 코드 발송 성공:", email);
+      console.log("isCodeSent 상태 설정됨:", true); // 디버깅용
+    } catch (err) {
+      console.error("이메일 인증 코드 발송 실패:", err);
+      if (err instanceof UserApiError) {
+        setError(err.message || "이메일 인증 코드 발송에 실패했습니다.");
+      } else {
+        setError("이메일 검증에 실패했습니다. 이메일 주소를 확인해주세요.");
+      }
+    } finally {
+      setLoading((prev) => ({ ...prev, sendCode: false }));
     }
   };
 
-  // 회원가입 폼 제출
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 2단계: 인증 코드 확인
+  const verifyEmailCode = async () => {
     setError("");
-    setLoading(true);
-
-    // 기본 유효성 검사
-    if (password !== confirmPassword) {
-      setError("비밀번호가 일치하지 않습니다.");
-      setLoading(false);
-      return;
-    }
-
-    if (isEmailDuplicate) {
-      setError("이미 사용 중인 이메일 주소입니다.");
-      setLoading(false);
-      return;
-    }
-
-    if (passwordValidation && !passwordValidation.isValid) {
-      setError(passwordValidation.message || "비밀번호가 유효하지 않습니다.");
-      setLoading(false);
-      return;
-    }
+    setSuccess("");
+    setLoading((prev) => ({ ...prev, verifyCode: true }));
 
     try {
-      // 1. 회원가입 (백엔드 요구사항에 맞춰 confirmPassword 포함)
+      const isVerified = await userControllerApi.verifyEmail({
+        email,
+        verificationCode,
+      });
+
+      if (isVerified) {
+        setIsEmailVerified(true);
+        setSuccess("이메일 인증이 완료되었습니다.");
+        console.log("이메일 인증 성공:", email);
+      } else {
+        setError("인증 코드가 올바르지 않습니다.");
+      }
+    } catch (err) {
+      console.error("이메일 인증 코드 확인 실패:", err);
+      if (err instanceof UserApiError) {
+        setError(err.message || "인증 코드 확인에 실패했습니다.");
+      } else {
+        setError("인증 코드를 다시 확인해주세요.");
+      }
+    } finally {
+      setLoading((prev) => ({ ...prev, verifyCode: false }));
+    }
+  };
+
+  // 3단계: 회원가입 완료
+  const registerUser = async () => {
+    setLoading((prev) => ({ ...prev, register: true }));
+
+    try {
       await userControllerApi.registerUser({
         email,
         password,
         confirmPassword,
       });
 
-      // 2. 이메일 인증 요청
-      await userControllerApi.requestEmailVerification({ email });
+      console.log("회원가입 완료:", email);
 
-      // 성공하면 이메일 발송 안내 단계로 이동
-      setStep(2);
-      console.log("회원가입 및 이메일 인증 요청 성공:", email);
+      // 성공 시 로그인 페이지로 이동
+      navigate("/login", {
+        state: { email },
+        replace: true,
+      });
     } catch (err) {
-      console.error("회원가입 오류:", err);
+      console.error("회원가입 실패:", err);
       if (err instanceof UserApiError) {
-        setError(err.message || "회원가입 중 오류가 발생했습니다.");
+        setError(err.message || "회원가입에 실패했습니다.");
       } else {
-        setError("회원가입 중 예상치 못한 오류가 발생했습니다.");
+        setError("회원가입 중 오류가 발생했습니다.");
       }
     } finally {
-      setLoading(false);
+      setLoading((prev) => ({ ...prev, register: false }));
     }
   };
 
-  // 이메일 발송 안내 화면 (step 2)
-  if (step === 2) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50 py-12 px-4 sm:px-6 lg:px-8">
-        <Card title="이메일 인증 메일 발송">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-8 h-8 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              인증 메일을 발송했습니다!
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              <strong>{email}</strong> 주소로 인증 메일을 발송했습니다.
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              메일함을 확인하고 인증을 완료해주세요.
-              <br />
-              메일이 오지 않았다면 스팸 메일함도 확인해보세요.
-            </p>
+  // 폼 제출 핸들러
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-            <div className="space-y-3">
-              <Button
-                onClick={() =>
-                  navigate(
-                    `/email-verification?email=${encodeURIComponent(email)}`
-                  )
-                }
-                variant="primary"
-                className="w-full"
-              >
-                인증 코드 입력하러 가기
-              </Button>
+    // 이메일 인증이 완료되지 않았다면 먼저 인증코드 발송
+    if (!isCodeSent) {
+      // 기본 유효성 검사
+      if (!email.includes("@")) {
+        setError("올바른 이메일 주소를 입력해주세요.");
+        return;
+      }
 
-              <Button
-                onClick={() => setStep(1)}
-                variant="ghost"
-                className="w-full"
-              >
-                이메일 주소 변경
-              </Button>
+      if (!password) {
+        setError("비밀번호를 입력해주세요.");
+        return;
+      }
 
-              <p className="text-xs text-gray-500">
-                다른 탭에서 이메일을 확인한 후<br />위 버튼을 클릭하여 인증을
-                완료하세요.
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+      if (password !== confirmPassword) {
+        setError("비밀번호가 일치하지 않습니다.");
+        return;
+      }
+
+      const isPasswordValid = passwordValidation?.isValid ?? false;
+      if (!isPasswordValid) {
+        setError("올바른 비밀번호를 입력해주세요.");
+        return;
+      }
+
+      await sendVerificationCode();
+      return;
+    }
+
+    // 이메일 인증이 완료되지 않았다면 인증 확인
+    if (!isEmailVerified) {
+      if (!verificationCode || verificationCode.length !== 6) {
+        setError("6자리 인증 코드를 입력해주세요.");
+        return;
+      }
+
+      await verifyEmailCode();
+      return;
+    }
+
+    // 이메일 인증이 완료되었다면 회원가입 진행
+    await registerUser();
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -398,27 +403,16 @@ export const SignupPage: React.FC = () => {
         </div>
         <Card title="회원가입">
           <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <Input
-                label="이메일 주소"
-                name="email"
-                type="email"
-                required
-                value={email}
-                onChange={handleEmailChange}
-                placeholder="you@example.com"
-              />
-              {isEmailDuplicate && (
-                <p className="text-xs text-red-500 mt-1">
-                  이미 사용 중인 이메일입니다.
-                </p>
-              )}
-              {email && !isEmailDuplicate && email.includes("@") && (
-                <p className="text-xs text-green-500 mt-1">
-                  사용 가능한 이메일입니다.
-                </p>
-              )}
-            </div>
+            <Input
+              label="이메일 주소"
+              name="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              disabled={isCodeSent} // 인증코드 발송 후에는 이메일 변경 불가
+            />
 
             <div>
               <Input
@@ -429,6 +423,7 @@ export const SignupPage: React.FC = () => {
                 value={password}
                 onChange={handlePasswordChange}
                 placeholder="8자 이상, 대소문자, 숫자 포함"
+                disabled={isCodeSent} // 인증코드 발송 후에는 비밀번호 변경 불가
               />
               {passwordValidation && (
                 <p
@@ -445,18 +440,79 @@ export const SignupPage: React.FC = () => {
               )}
             </div>
 
-            <Input
-              label="비밀번호 확인"
-              name="confirmPassword"
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="비밀번호를 다시 입력해주세요"
-            />
+            <div>
+              <Input
+                label="비밀번호 확인"
+                name="confirmPassword"
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={handleConfirmPasswordChange}
+                placeholder="비밀번호를 다시 입력해주세요"
+                disabled={isCodeSent} // 인증코드 발송 후에는 비밀번호 확인 변경 불가
+              />
+              {confirmPassword && (
+                <p
+                  className={`text-xs mt-1 ${
+                    password === confirmPassword
+                      ? "text-green-500"
+                      : "text-red-500"
+                  }`}
+                >
+                  {password === confirmPassword
+                    ? "비밀번호가 일치합니다."
+                    : "비밀번호가 일치하지 않습니다."}
+                </p>
+              )}
+            </div>
 
+            {/* 성공 메시지 - 독립적으로 표시 */}
+            {success && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-700 text-center">{success}</p>
+              </div>
+            )}
+
+            {/* 에러 메시지 - 독립적으로 표시 */}
             {error && (
-              <p className="text-sm text-red-500 text-center">{error}</p>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700 text-center">{error}</p>
+              </div>
+            )}
+
+            {/* 인증코드 입력칸 - 완전히 독립적으로 작동 */}
+            {isCodeSent && (
+              <div className="space-y-3">
+                <div className="text-xs text-blue-500 mb-2">
+                  디버깅: isCodeSent = {String(isCodeSent)}
+                </div>
+                <Input
+                  label="인증 코드"
+                  name="verificationCode"
+                  type="text"
+                  maxLength={6}
+                  required
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  placeholder="123456"
+                  className="text-center text-lg tracking-widest"
+                />
+                <div className="text-sm text-gray-600 text-center">
+                  <p className="mb-2">
+                    <strong>{email}</strong>로 발송된 6자리 인증 코드를
+                    입력해주세요.
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={sendVerificationCode}
+                    variant="ghost"
+                    className="text-sm p-0 h-auto text-blue-600 hover:text-blue-800"
+                    disabled={loading.sendCode}
+                  >
+                    {loading.sendCode ? "재발송 중..." : "인증 코드 재발송"}
+                  </Button>
+                </div>
+              </div>
             )}
 
             <Button
@@ -464,12 +520,32 @@ export const SignupPage: React.FC = () => {
               className="w-full"
               variant="primary"
               disabled={
-                loading ||
-                isEmailDuplicate ||
-                (passwordValidation !== null && !passwordValidation.isValid)
+                loading.sendCode ||
+                loading.verifyCode ||
+                loading.register ||
+                loading.passwordValidation ||
+                (!isCodeSent &&
+                  (!email ||
+                    !password ||
+                    !confirmPassword ||
+                    password !== confirmPassword ||
+                    !(passwordValidation?.isValid ?? false))) ||
+                (isCodeSent &&
+                  !isEmailVerified &&
+                  verificationCode.length !== 6)
               }
             >
-              {loading ? "가입 중..." : "이메일 인증하고 가입하기"}
+              {loading.sendCode && "인증 메일 발송 중..."}
+              {loading.verifyCode && "인증 코드 확인 중..."}
+              {loading.register && "회원가입 중..."}
+              {!loading.sendCode &&
+                !loading.verifyCode &&
+                !loading.register &&
+                (!isCodeSent
+                  ? "이메일 인증하고 가입하기"
+                  : !isEmailVerified
+                  ? "인증 코드 확인"
+                  : "회원가입 완료")}
             </Button>
           </form>
           <div className="mt-6">
