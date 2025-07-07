@@ -17,7 +17,8 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
         currentUser, 
         updateWorkspace, 
         kickMember, 
-        banMember, 
+        banMember,
+        unbanMember,
         deleteWorkspace,
         loading 
     } = useAuth();
@@ -26,6 +27,11 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     const [showConfirmDelete, setShowConfirmDelete] = useState<{type: string, id: string, name: string} | null>(null);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    
+    // 현재 사용자의 워크스페이스 내 역할 확인
+    const isOwner = currentWorkspace?.owner?.id === currentUser?.id;
+    const isAdmin = currentWorkspace?.members?.find(m => m.id === currentUser?.id)?.role === 'ADMIN';
+    const canManageWorkspace = isOwner || isAdmin;
     
     // 멤버 목록 상태 추가
     const [members, setMembers] = useState<User[]>([]);
@@ -42,8 +48,16 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     useEffect(() => {
         if (currentWorkspace) {
             setWorkspacePassword(''); // 보안상 비밀번호는 비워둠
+            
+            // 권한이 없는 사용자가 기본적으로 권한이 필요한 탭에 접근하지 못하도록 조정
+            if (!canManageWorkspace && (activeTab === 'members' || activeTab === 'blacklist')) {
+                setActiveTab('invite');
+            }
+            if (!isOwner && (activeTab === 'security' || activeTab === 'danger')) {
+                setActiveTab('invite');
+            }
         }
-    }, [currentWorkspace]);
+    }, [currentWorkspace, canManageWorkspace, isOwner, activeTab]);
 
     // 멤버 목록 조회
     const fetchMembers = async () => {
@@ -62,7 +76,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 id: member.id,
                 email: `${member.name}@workspace.local`, // 임시 이메일
                 name: member.name,
-                profilePictureUrl: member.profileImage
+                profileImage: member.profileImage
             })) || [];
             setMembers(fallbackMembers);
         } finally {
@@ -92,17 +106,13 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     const handleUnbanMember = async (memberId: string, memberName: string) => {
         if (!currentWorkspace || !confirm(`${memberName}님의 차단을 해제하시겠습니까?`)) return;
 
-        setActionLoading(true);
-        try {
-            await workspaceApi.unbanMember(currentWorkspace.id, memberId);
+        const success = await unbanMember(currentWorkspace.id, memberId);
+        if (success) {
             alert(`✅ ${memberName}님의 차단이 해제되었습니다.`);
             // 블랙리스트 새로고침
             await fetchBlacklistedMembers();
-        } catch (error: any) {
-            console.error('차단 해제 실패:', error);
-            alert(`❌ 차단 해제에 실패했습니다: ${error.message}`);
-        } finally {
-            setActionLoading(false);
+        } else {
+            alert(`❌ 차단 해제에 실패했습니다.`);
         }
     };
 
@@ -198,16 +208,20 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     }
 
     const TABS_CONFIG = [
-        { id: 'invite', label: '초대', icon: <LinkIcon className="w-5 h-5 mr-2" /> },
-        { id: 'members', label: '멤버 관리', icon: <UsersIcon className="w-5 h-5 mr-2" /> },
-        { id: 'blacklist', label: '차단 목록', icon: <NoSymbolIcon className="w-5 h-5 mr-2" /> },
-        { id: 'security', label: '보안', icon: <ShieldCheckIcon className="w-5 h-5 mr-2" /> },
-        { id: 'danger', label: '위험 구역', icon: <ExclamationTriangleIcon className="w-5 h-5 mr-2" /> },
+        { id: 'invite', label: '초대', icon: <LinkIcon className="w-4 h-4 mr-1" /> },
+        ...(canManageWorkspace ? [{ id: 'members', label: '멤버 관리', icon: <UsersIcon className="w-4 h-4 mr-1" /> }] : []),
+        ...(canManageWorkspace ? [{ id: 'blacklist', label: '차단 목록', icon: <NoSymbolIcon className="w-4 h-4 mr-1" /> }] : []),
+        ...(isOwner ? [{ id: 'security', label: '보안', icon: <ShieldCheckIcon className="w-4 h-4 mr-1" /> }] : []),
+        ...(isOwner ? [{ id: 'danger', label: '위험 구역', icon: <ExclamationTriangleIcon className="w-4 h-4 mr-1" /> }] : []),
     ];
 
     return (
         <>
-        <Modal isOpen={isOpen} onClose={onClose} title={`${currentWorkspace.name} 설정`}
+        <Modal 
+            isOpen={isOpen} 
+            onClose={onClose} 
+            title={`${currentWorkspace.name} 설정`}
+            size="lg"
             footer={ 
                 activeTab === 'security' ? (
                     <div className="flex justify-end space-x-2">
@@ -229,18 +243,19 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
             }
         >
             <div className="mb-4 border-b border-neutral-200">
-                <nav className="-mb-px flex space-x-2" aria-label="Tabs">
+                <nav className="-mb-px flex justify-center gap-x-1 overflow-x-auto" aria-label="Tabs">
                     {TABS_CONFIG.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as 'security' | 'danger' | 'invite' | 'members' | 'blacklist')}
-                        className={`whitespace-nowrap py-3 px-3 border-b-2 font-medium text-sm flex items-center
+                        className={`whitespace-nowrap py-2 px-3 border-b-2 font-medium text-xs flex items-center flex-shrink-0 min-w-0
                         ${activeTab === tab.id
                             ? 'border-primary text-primary'
-                            : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}`}
+                            : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}
+                        ${tab.id === 'danger' ? (activeTab === tab.id ? 'border-red-500 text-red-600' : 'text-red-600 hover:text-red-700 hover:border-red-300') : ''}`}
                     >
                         {tab.icon}
-                        {tab.label}
+                        <span className="truncate">{tab.label}</span>
                     </button>
                     ))}
                 </nav>
@@ -261,7 +276,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 </div>
             )}
 
-            {activeTab === 'members' && (
+            {activeTab === 'members' && canManageWorkspace && (
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <p className="text-sm text-neutral-600">
@@ -305,7 +320,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                         <div key={member.id} className="flex items-center justify-between p-2 bg-neutral-50 rounded-md">
                             <div className="flex items-center space-x-2">
                                 <img 
-                                    src={member.profilePictureUrl || `https://picsum.photos/seed/${member.id}/32/32`} 
+                                    src={member.profileImage || `https://picsum.photos/seed/${member.id}/32/32`} 
                                     alt={member.name} 
                                     className="w-8 h-8 rounded-full object-cover"
                                 />
@@ -348,7 +363,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 </div>
             )}
 
-            {activeTab === 'blacklist' && (
+            {activeTab === 'blacklist' && canManageWorkspace && (
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <p className="text-sm text-neutral-600">
@@ -397,7 +412,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                         <div key={member.id} className="flex items-center justify-between p-2 bg-red-50 border border-red-200 rounded-md">
                             <div className="flex items-center space-x-2">
                                 <img 
-                                    src={member.profilePictureUrl || `https://picsum.photos/seed/${member.id}/32/32`} 
+                                    src={member.profileImage || `https://picsum.photos/seed/${member.id}/32/32`} 
                                     alt={member.name} 
                                     className="w-8 h-8 rounded-full object-cover"
                                 />
@@ -426,7 +441,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 </div>
             )}
 
-            {activeTab === 'security' && (
+            {activeTab === 'security' && isOwner && (
                 <div className="space-y-4">
                     <Input 
                         label="워크스페이스 비밀번호 설정"
@@ -441,28 +456,56 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 </div>
             )}
 
-            {activeTab === 'danger' && (
+            {activeTab === 'danger' && isOwner && (
                 <div className="space-y-6">
                     <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                        <div className="flex items-center mb-2">
-                            <ExclamationTriangleIcon className="w-5 h-5 text-red-500 mr-2" />
-                            <h3 className="text-sm font-semibold text-red-800">워크스페이스 영구 삭제</h3>
+                        <div className="flex items-center mb-3">
+                            <ExclamationTriangleIcon className="w-6 h-6 text-red-500 mr-3" />
+                            <div>
+                                <h3 className="text-lg font-semibold text-red-800">워크스페이스 영구 삭제</h3>
+                                <p className="text-sm text-red-600 mt-1">이 작업은 되돌릴 수 없습니다!</p>
+                            </div>
                         </div>
-                        <p className="text-sm text-red-700 mb-4">
-                            이 작업은 되돌릴 수 없습니다. 워크스페이스와 관련된 모든 데이터(팀, 채팅, 파일 등)가 영구적으로 삭제됩니다.
-                        </p>
-                        <Input
-                            label={`확인을 위해 워크스페이스 이름 "${currentWorkspace.name}"을 입력하세요`}
-                            value={deleteConfirmText}
-                            onChange={e => setDeleteConfirmText(e.target.value)}
-                            placeholder={currentWorkspace.name}
-                            className="mb-3"
-                        />
-                        <div className="text-xs text-red-600 space-y-1">
-                            <p>• 모든 팀 프로젝트가 삭제됩니다</p>
-                            <p>• 채팅 기록이 모두 사라집니다</p>
-                            <p>• 업로드된 파일들이 삭제됩니다</p>
-                            <p>• 멤버들은 더 이상 이 워크스페이스에 접근할 수 없습니다</p>
+                        
+                        <div className="bg-red-100 border border-red-300 rounded-md p-3 mb-4">
+                            <h4 className="text-sm font-semibold text-red-800 mb-2">⚠️ 삭제될 데이터:</h4>
+                            <div className="text-xs text-red-700 space-y-1">
+                                <p>• 모든 팀 프로젝트와 칸반보드</p>
+                                <p>• 채팅 기록과 업로드된 파일들</p>
+                                <p>• 워크스페이스 멤버 정보</p>
+                                <p>• 모든 설정과 권한</p>
+                            </div>
+                        </div>
+
+                        <div className="mb-4">
+                            <Input
+                                label={`확인을 위해 워크스페이스 이름을 정확히 입력하세요:`}
+                                value={deleteConfirmText}
+                                onChange={e => setDeleteConfirmText(e.target.value)}
+                                placeholder={currentWorkspace.name}
+                                className="mb-2"
+                            />
+                            <div className="text-xs text-neutral-600">
+                                입력해야 할 이름: <span className="font-mono bg-neutral-100 px-1 py-0.5 rounded">{currentWorkspace.name}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-md">
+                            <div className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    id="confirmDelete"
+                                    checked={deleteConfirmText === currentWorkspace.name}
+                                    readOnly
+                                    className="mr-2"
+                                />
+                                <label htmlFor="confirmDelete" className="text-sm text-neutral-700">
+                                    위험성을 이해하고 워크스페이스를 삭제하겠습니다.
+                                </label>
+                            </div>
+                            {deleteConfirmText === currentWorkspace.name && (
+                                <span className="text-xs text-green-600 font-semibold">✓ 확인됨</span>
+                            )}
                         </div>
                     </div>
                 </div>

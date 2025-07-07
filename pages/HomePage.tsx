@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { Card, Button, ProfileSummaryCard, Modal } from '../components';
 import { TeamProject, User, Workspace } from '../types'; // Updated type import
-import { workspaceApi } from '../services/api';
+import { workspaceApi, teamApi } from '../services/api';
 import { UserIcon, UsersIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import TeamActionModal from '../components/modals/TeamActionModal';
 
 // 목업 데이터 완전 제거 - 실제 API만 사용
 // const MOCK_TEAM_PROJECTS_ALL: TeamProject[] = [];
@@ -27,6 +28,14 @@ export const HomePage: React.FC = () => {
   // 선택된 멤버 상세 정보 상태
   const [selectedMember, setSelectedMember] = useState<User | null>(null);
   const [isMemberDetailModalOpen, setIsMemberDetailModalOpen] = useState(false);
+
+  // 팀 목록 관련 상태
+  const [teams, setTeams] = useState<TeamProject[]>([]);
+  const [isLoadingTeams, setIsLoadingTeams] = useState(false);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+
+  // 팀 액션 모달 상태
+  const [isTeamActionModalOpen, setIsTeamActionModalOpen] = useState(false);
 
   // 워크스페이스 멤버 목록 조회 (전체)
   const fetchWorkspaceMembers = async () => {
@@ -66,6 +75,29 @@ export const HomePage: React.FC = () => {
     setIsMemberDetailModalOpen(true);
   };
 
+  // 워크스페이스의 팀 목록 로드
+  const loadTeams = async () => {
+    if (!currentWorkspace) return;
+    
+    setIsLoadingTeams(true);
+    setTeamsError(null);
+    
+    try {
+      const teamList = await teamApi.getTeamsByWorkspace(currentWorkspace.id);
+      setTeams(teamList);
+    } catch (error: any) {
+      console.error('팀 목록 로드 실패:', error);
+      setTeamsError(error.message || '팀 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoadingTeams(false);
+    }
+  };
+
+  // 팀 액션 모달 열기
+  const handleOpenTeamActionModal = () => {
+    setIsTeamActionModalOpen(true);
+  };
+
   useEffect(() => {
     if (workspaceId && (!currentWorkspace || currentWorkspace.id !== workspaceId)) {
       // 실제 workspaces 배열에서 찾기 (목업 데이터 대신)
@@ -90,6 +122,7 @@ export const HomePage: React.FC = () => {
   useEffect(() => {
     if (currentWorkspace) {
       loadMembersPreview();
+      loadTeams();
     }
   }, [currentWorkspace]);
 
@@ -99,8 +132,8 @@ export const HomePage: React.FC = () => {
     return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
   }
   
-  // 실제 팀 프로젝트는 API에서 가져와야 함 (현재는 빈 배열)
-  const teamsForCurrentWorkspace: TeamProject[] = [];
+  // 실제 팀 프로젝트는 API에서 가져옴
+  const teamsForCurrentWorkspace = teams;
 
 
   return (
@@ -113,7 +146,11 @@ export const HomePage: React.FC = () => {
 
       {/* My Teams Section */}
       <Card title="내 팀 목록">
-        {teamsForCurrentWorkspace.length > 0 ? (
+        {isLoadingTeams ? (
+          <div className="py-8 text-center text-neutral-500">팀 목록을 불러오는 중...</div>
+        ) : teamsError ? (
+          <div className="py-8 text-center text-red-500">{teamsError}</div>
+        ) : teamsForCurrentWorkspace.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {teamsForCurrentWorkspace.map(team => (
               <Card key={team.id} className="bg-white hover:shadow-xl transition-shadow flex flex-col justify-between">
@@ -145,9 +182,9 @@ export const HomePage: React.FC = () => {
             <Button 
                 variant="outline" 
                 size="lg" 
-                onClick={() => alert(`'${currentWorkspace.name}'에서 새로운 팀 만들기 (개발 예정)`)} 
+                onClick={handleOpenTeamActionModal}
             >
-                새로운 팀 만들기 또는 참여하기
+                팀 생성 또는 참여하기
             </Button>
         </div>
       </Card>
@@ -405,6 +442,12 @@ export const HomePage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* 팀 액션 모달 */}
+      <TeamActionModal 
+        isOpen={isTeamActionModalOpen}
+        onClose={() => setIsTeamActionModalOpen(false)}
+      />
     </div>
   );
 };
