@@ -483,9 +483,6 @@ export const SignupPage: React.FC = () => {
             {/* 인증코드 입력칸 - 완전히 독립적으로 작동 */}
             {isCodeSent && (
               <div className="space-y-3">
-                <div className="text-xs text-blue-500 mb-2">
-                  디버깅: isCodeSent = {String(isCodeSent)}
-                </div>
                 <Input
                   label="인증 코드"
                   name="verificationCode"

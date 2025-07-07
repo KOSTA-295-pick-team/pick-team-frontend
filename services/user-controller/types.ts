@@ -46,27 +46,21 @@ export interface LogoutWithClientInfoRequest {
 }
 
 export interface UpdateMyProfileRequest {
+  // API 문서 기준 필드들
   name?: string;
-  nickname?: string; // 새로 추가
-  bio?: string; // 새로 추가 (USER_API_DOCUMENTATION 기준)
-  skills?: string[]; // 새로 추가
-  interests?: string[]; // 새로 추가
-  githubUrl?: string; // 새로 추가
-  linkedinUrl?: string; // 새로 추가
-  portfolioUrl?: string; // 새로 추가
-  profileImageUrl?: string; // 새로 추가
-
-  // 기존 필드들 (호환성 유지)
   age?: number;
   mbti?: string;
   disposition?: string;
   introduction?: string;
   portfolio?: string;
+  profileImageUrl?: string;
   preferWorkstyle?: string;
   dislikeWorkstyle?: string;
-  likes?: string;
-  dislikes?: string;
-  tags?: string[];
+  hashtags?: string[];
+
+  // 호환성을 위한 추가 필드들 (현재 UI에서 사용 중)
+  bio?: string; // introduction과 동일하지만 UI에서 사용
+  tags?: string[]; // hashtags와 동일하지만 UI에서 사용
 }
 
 export interface ChangePasswordRequest {
@@ -90,25 +84,19 @@ export interface UserResponse {
   disposition?: string; // 성향 설명
   introduction?: string; // 자기소개
   portfolio?: string; // 포트폴리오 링크
-  profileImageUrl?: string; // USER_API_DOCUMENTATION 기준
+  profileImageUrl?: string; // USER_API_DOCUMENTATION 기준 (정확한 필드명)
   preferWorkstyle?: string; // 선호 작업 스타일
   dislikeWorkstyle?: string; // 기피 작업 스타일
   hashtags?: string[]; // 해시태그 배열
 
-  // 호환성을 위해 남겨둠
-  nickname?: string;
-  bio?: string;
-  skills?: string[];
-  interests?: string[];
-  githubUrl?: string;
-  linkedinUrl?: string;
-  portfolioUrl?: string;
-  profileImage?: string;
-  tags?: string[];
-  likes?: string;
-  dislikes?: string;
+  // 호환성을 위해 남겨둠 (현재 UI에서 사용 중)
+  bio?: string; // User 타입의 bio 필드와 매핑됨
+  tags?: string[]; // User 타입의 tags 필드와 매핑됨 (hashtags와 동일)
   createdAt?: string;
   updatedAt?: string;
+
+  // 추천 팀원에서만 사용되는 필드
+  matchScore?: number; // AI 추천 매칭 점수
 }
 
 export interface LoginResponse {

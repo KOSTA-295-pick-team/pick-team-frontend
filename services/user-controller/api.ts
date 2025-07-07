@@ -334,17 +334,14 @@ export const userControllerApi = {
   },
 
   // 내 프로필 수정
-  updateMyProfile: async (data: UpdateMyProfileRequest): Promise<User> => {
-    const response = await userApiRequest<ApiResponse<UserResponse>>(
-      "/users/me",
-      {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }
-    );
+  updateMyProfile: async (data: UpdateMyProfileRequest): Promise<void> => {
+    const response = await userApiRequest<ApiResponse<null>>("/users/me", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
 
-    if (response.success && response.data) {
-      return transformUserResponse(response.data);
+    if (response.success) {
+      return; // API 문서: data: null 반환
     }
 
     throw new UserApiError(
@@ -462,9 +459,9 @@ export const userControllerApi = {
   // 프로필 이미지 업로드
   uploadProfileImage: async (file: File): Promise<string> => {
     const formData = new FormData();
-    formData.append("profileImage", file);
+    formData.append("file", file); // API 문서 기준: "file" 필드명 사용
 
-    const response = await userApiRequest<ApiResponse<{ imageUrl: string }>>(
+    const response = await userApiRequest<ApiResponse<string>>(
       "/users/me/profile-image",
       {
         method: "POST",
@@ -476,7 +473,7 @@ export const userControllerApi = {
     );
 
     if (response.success && response.data) {
-      return response.data.imageUrl;
+      return response.data; // API 문서: 직접 문자열 반환 ("/profile-images/uuid-filename.jpg")
     }
 
     throw new UserApiError(

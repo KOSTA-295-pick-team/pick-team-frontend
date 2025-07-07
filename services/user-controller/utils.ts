@@ -11,24 +11,25 @@ export const transformUserResponse = (user: UserResponse): User => {
     email: user.email,
     name: user.name,
     age: user.age,
+    role: user.role,
     mbti: user.mbti,
     disposition: user.disposition,
     introduction: user.introduction,
     portfolio: user.portfolio,
+    profileImageUrl: user.profileImageUrl, // API 문서 기준 필드명 사용
     preferWorkstyle: user.preferWorkstyle,
     dislikeWorkstyle: user.dislikeWorkstyle,
-    likes: user.likes,
-    dislikes: user.dislikes,
-    profileImage: user.profileImage,
-    tags: user.tags || [],
+    tags: user.hashtags || user.tags || [], // API 문서에서는 hashtags, 호환성을 위해 tags도 확인
 
-    // 호환성을 위한 매핑
-    bio: user.introduction,
+    // 호환성을 위한 매핑 (현재 UI에서 사용 중)
+    bio: user.bio || user.introduction, // bio 우선, 없으면 introduction
     portfolioLink: user.portfolio,
     preferredStyle: user.preferWorkstyle,
     avoidedStyle: user.dislikeWorkstyle,
+    profileImage: user.profileImageUrl,
     profilePictureUrl:
-      user.profileImage || `https://picsum.photos/seed/${user.email}/100/100`,
+      user.profileImageUrl ||
+      `https://picsum.photos/seed/${user.email}/100/100`,
   };
 };
 
