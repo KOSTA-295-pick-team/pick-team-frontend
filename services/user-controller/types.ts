@@ -53,7 +53,7 @@ export interface UpdateMyProfileRequest {
   disposition?: string;
   introduction?: string;
   portfolio?: string;
-  profileImageUrl?: string;
+  profileImageUrl?: string | null;
   preferWorkstyle?: string;
   dislikeWorkstyle?: string;
   hashtags?: string[];
@@ -80,7 +80,7 @@ export interface UserResponse {
   disposition?: string; // 성향 설명
   introduction?: string; // 자기소개
   portfolio?: string; // 포트폴리오 링크
-  profileImageUrl?: string; // USER_API_DOCUMENTATION 기준 (정확한 필드명)
+  profileImageUrl?: string | null; // USER_API_DOCUMENTATION 기준 (정확한 필드명)
   preferWorkstyle?: string; // 선호 작업 스타일
   dislikeWorkstyle?: string; // 기피 작업 스타일
   hashtags?: string[]; // 해시태그 배열

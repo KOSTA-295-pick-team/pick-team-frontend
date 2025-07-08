@@ -13,7 +13,8 @@ import {
   ChatRoom,
   ChatRoomMember,
 } from "./types";
-import { workspaceApi, ApiError, tokenManager } from "./services/api";
+import { workspaceApi, ApiError } from "./services/api";
+import { tokenManager } from "./services/tokenManager";
 import { userControllerApi, UserApiError } from "./services/user-controller";
 
 interface AuthContextType {

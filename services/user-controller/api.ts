@@ -22,10 +22,7 @@ import {
 } from "./types";
 import { transformUserResponse, getClientInfo } from "./utils";
 import { User } from "../../types";
-
-// 기존 API 기본 설정 재사용을 위한 import
-// TODO: 나중에 공통 모듈로 분리할 예정
-const API_BASE_URL = "http://localhost:8081/api";
+import { tokenManager } from "../tokenManager"; // 통합된 토큰 매니저 사용
 
 // API 에러 클래스
 export class UserApiError extends Error {
@@ -35,44 +32,195 @@ export class UserApiError extends Error {
   }
 }
 
-// 토큰 관리 (기존 것 재사용)
-const TOKEN_KEY = "auth_token";
-const REFRESH_TOKEN_KEY = "refresh_token";
-
-export const userTokenManager = {
-  getAccessToken: () => localStorage.getItem(TOKEN_KEY),
-  setAccessToken: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  getRefreshToken: () => localStorage.getItem(REFRESH_TOKEN_KEY),
-  setRefreshToken: (token: string) =>
-    localStorage.setItem(REFRESH_TOKEN_KEY, token),
-  clearTokens: () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-  },
-};
+// 기존 API 기본 설정 재사용을 위한 import
+// TODO: 나중에 공통 모듈로 분리할 예정
+const API_BASE_URL = "http://localhost:8081/api";
 
 // HTTP 요청 래퍼 함수
+// 토큰 갱신 중복 방지를 위한 플래그
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+}> = [];
+
+// 토큰 갱신 함수
+async function refreshToken(): Promise<void> {
+  const refreshToken = tokenManager.getRefreshToken();
+  if (!refreshToken) {
+    throw new UserApiError(
+      401,
+      "리프레시 토큰이 없습니다. 다시 로그인해주세요."
+    );
+  }
+
+  const response = await fetch(`${API_BASE_URL}/users/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!response.ok) {
+    tokenManager.clearTokens();
+    throw new UserApiError(
+      401,
+      "토큰 갱신에 실패했습니다. 다시 로그인해주세요."
+    );
+  }
+
+  const result = await response.json();
+  if (result.success && result.data) {
+    tokenManager.setAccessToken(result.data.accessToken);
+    tokenManager.setRefreshToken(result.data.refreshToken);
+  } else {
+    tokenManager.clearTokens();
+    throw new UserApiError(
+      401,
+      "토큰 갱신에 실패했습니다. 다시 로그인해주세요."
+    );
+  }
+}
+
 async function userApiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = userTokenManager.getAccessToken();
+  const token = tokenManager.getAccessToken();
+
+  console.log("[DEBUG userApiRequest] 시작:", endpoint);
+  console.log("[DEBUG userApiRequest] 토큰:", token ? "존재" : "없음");
+
+  // FormData인 경우 Content-Type 헤더를 설정하지 않음 (브라우저가 자동 설정)
+  const isFormData = options.body instanceof FormData;
+  console.log("[DEBUG userApiRequest] FormData 여부:", isFormData);
+
+  // 헤더 객체 생성
+  const headers: HeadersInit = {};
+
+  // 기존 헤더가 있으면 복사
+  if (options.headers) {
+    if (options.headers instanceof Headers) {
+      options.headers.forEach((value, key) => {
+        (headers as Record<string, string>)[key] = value;
+      });
+    } else {
+      Object.assign(headers, options.headers);
+    }
+  }
+
+  // Content-Type은 FormData가 아닐 때만 설정
+  if (!isFormData) {
+    (headers as Record<string, string>)["Content-Type"] = "application/json";
+  }
+
+  // Authorization 헤더는 항상 토큰이 있으면 설정
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
 
   const config: RequestInit = {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
     ...options,
+    headers,
   };
 
+  console.log("[DEBUG userApiRequest] 최종 헤더:", config.headers);
+
   try {
+    console.log("[DEBUG userApiRequest] fetch 시작:", url);
     const response = await fetch(url, config);
+    console.log(
+      "[DEBUG userApiRequest] fetch 응답:",
+      response.status,
+      response.statusText
+    );
+
+    // 401 에러 시 토큰 갱신 시도
+    if (response.status === 401 && !isRefreshing) {
+      console.log("[DEBUG userApiRequest] 401 에러 감지, 토큰 갱신 시도");
+
+      // 토큰 갱신 중인 경우 대기
+      if (isRefreshing) {
+        console.log("[DEBUG userApiRequest] 이미 토큰 갱신 중, 대기");
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(() => {
+          return userApiRequest(endpoint, options);
+        });
+      }
+
+      isRefreshing = true;
+
+      try {
+        console.log("[DEBUG userApiRequest] refreshToken 호출");
+        await refreshToken();
+
+        // 대기 중인 요청들 처리
+        failedQueue.forEach(({ resolve }) => {
+          resolve(null);
+        });
+        failedQueue = [];
+
+        // 새 토큰으로 원래 요청 재시도
+        const newToken = tokenManager.getAccessToken();
+        console.log(
+          "[DEBUG userApiRequest] 새 토큰으로 재시도:",
+          newToken ? "존재" : "없음"
+        );
+
+        const retryConfig: RequestInit = {
+          ...config,
+          headers: {
+            ...config.headers,
+            ...(newToken && { Authorization: `Bearer ${newToken}` }),
+          },
+        };
+
+        console.log("[DEBUG userApiRequest] 재시도 헤더:", retryConfig.headers);
+        const retryResponse = await fetch(url, retryConfig);
+        console.log(
+          "[DEBUG userApiRequest] 재시도 응답:",
+          retryResponse.status
+        );
+
+        if (!retryResponse.ok) {
+          const errorData = await retryResponse.text();
+          console.error("[DEBUG userApiRequest] 재시도 실패:", errorData);
+          throw new UserApiError(
+            retryResponse.status,
+            errorData || `HTTP ${retryResponse.status}`
+          );
+        }
+
+        const contentType = retryResponse.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          return await retryResponse.json();
+        }
+
+        return (await retryResponse.text()) as T;
+      } catch (refreshError) {
+        console.error("[DEBUG userApiRequest] 토큰 갱신 실패:", refreshError);
+        // 대기 중인 요청들에게 에러 전파
+        failedQueue.forEach(({ reject }) => {
+          reject(refreshError);
+        });
+        failedQueue = [];
+
+        throw refreshError;
+      } finally {
+        isRefreshing = false;
+      }
+    }
 
     if (!response.ok) {
       const errorData = await response.text();
+      console.error(
+        "[DEBUG userApiRequest] HTTP 에러:",
+        response.status,
+        errorData
+      );
       throw new UserApiError(
         response.status,
         errorData || `HTTP ${response.status}`
@@ -81,11 +229,16 @@ async function userApiRequest<T>(
 
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
-      return await response.json();
+      const jsonData = await response.json();
+      console.log("[DEBUG userApiRequest] JSON 응답:", jsonData);
+      return jsonData;
     }
 
-    return (await response.text()) as T;
+    const textData = await response.text();
+    console.log("[DEBUG userApiRequest] 텍스트 응답:", textData);
+    return textData as T;
   } catch (error) {
+    console.error("[DEBUG userApiRequest] 캐치된 에러:", error);
     if (error instanceof UserApiError) {
       throw error;
     }
@@ -215,8 +368,8 @@ export const userControllerApi = {
 
     if (response.success && response.data) {
       // 토큰 저장
-      userTokenManager.setAccessToken(response.data.accessToken);
-      userTokenManager.setRefreshToken(response.data.refreshToken);
+      tokenManager.setAccessToken(response.data.accessToken);
+      tokenManager.setRefreshToken(response.data.refreshToken);
       return response.data;
     }
 
@@ -240,8 +393,23 @@ export const userControllerApi = {
 
     if (response.success && response.data) {
       // 토큰 저장
-      userTokenManager.setAccessToken(response.data.accessToken);
-      userTokenManager.setRefreshToken(response.data.refreshToken);
+      console.log("[DEBUG] 로그인 응답에서 토큰 저장 시작");
+      console.log("[DEBUG] accessToken 존재:", !!response.data.accessToken);
+      console.log("[DEBUG] refreshToken 존재:", !!response.data.refreshToken);
+
+      tokenManager.setAccessToken(response.data.accessToken);
+      tokenManager.setRefreshToken(response.data.refreshToken);
+
+      console.log("[DEBUG] 토큰 저장 완료");
+      console.log(
+        "[DEBUG] 저장된 accessToken:",
+        !!tokenManager.getAccessToken()
+      );
+      console.log(
+        "[DEBUG] 저장된 refreshToken:",
+        !!tokenManager.getRefreshToken()
+      );
+
       return response.data;
     }
 
@@ -268,7 +436,7 @@ export const userControllerApi = {
       );
     } finally {
       // 로컬 토큰은 항상 삭제
-      userTokenManager.clearTokens();
+      tokenManager.clearTokens();
     }
   },
 
@@ -297,7 +465,7 @@ export const userControllerApi = {
       );
     } finally {
       // 로컬 토큰은 항상 삭제
-      userTokenManager.clearTokens();
+      tokenManager.clearTokens();
     }
   },
 
@@ -430,7 +598,7 @@ export const userControllerApi = {
     }
 
     // 계정 삭제 성공 시 토큰 삭제
-    userTokenManager.clearTokens();
+    tokenManager.clearTokens();
   },
 
   // 해시태그 검색 (자동완성용)
@@ -458,8 +626,17 @@ export const userControllerApi = {
 
   // 프로필 이미지 업로드
   uploadProfileImage: async (file: File): Promise<string> => {
+    console.log("[DEBUG API] uploadProfileImage 시작");
+    console.log("[DEBUG API] 파일:", file.name, file.type, file.size);
+
+    const token = tokenManager.getAccessToken();
+    console.log("[DEBUG API] 토큰 상태:", token ? "존재" : "없음");
+    console.log("[DEBUG API] 토큰 값:", token?.substring(0, 20) + "...");
+
     const formData = new FormData();
     formData.append("file", file); // API 문서 기준: "file" 필드명 사용
+
+    console.log("[DEBUG API] FormData 생성 완료, API 호출 시작");
 
     const response = await userApiRequest<ApiResponse<string>>(
       "/users/me/profile-image",
@@ -467,15 +644,20 @@ export const userControllerApi = {
         method: "POST",
         body: formData,
         headers: {
-          // FormData 사용 시 Content-Type 헤더를 제거해야 함
+          // FormData 사용 시 Content-Type 헤더를 제거해야 함 (브라우저가 자동 설정)
+          // Authorization 헤더는 userApiRequest에서 자동 추가됨
         },
       }
     );
 
+    console.log("[DEBUG API] API 응답:", response);
+
     if (response.success && response.data) {
+      console.log("[DEBUG API] 업로드 성공:", response.data);
       return response.data; // API 문서: 직접 문자열 반환 ("/profile-images/uuid-filename.jpg")
     }
 
+    console.error("[DEBUG API] 업로드 실패:", response);
     throw new UserApiError(
       400,
       response.message || "프로필 이미지 업로드에 실패했습니다."

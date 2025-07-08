@@ -9,7 +9,7 @@ export interface User {
   bio?: string; // 자기소개 (USER_API_DOCUMENTATION 기준)
   skills?: string[]; // 새로 추가 - 기술 스택
   interests?: string[]; // 새로 추가 - 관심사
-  profileImageUrl?: string; // 프로필 이미지 URL (USER_API_DOCUMENTATION 기준)
+  profileImageUrl?: string | null; // 프로필 이미지 URL (USER_API_DOCUMENTATION 기준)
 
   // 소셜 링크
   githubUrl?: string; // 새로 추가 - GitHub 링크

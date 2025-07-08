@@ -14,6 +14,7 @@ import {
   userControllerApi,
   UserApiError,
 } from "../../services/user-controller";
+import { getProfileImageSrc, handleImageError } from "../../utils/avatar";
 
 const availableTags: TendencyTag[] = [
   { id: "1", label: "#아침형인간" },
@@ -46,12 +47,14 @@ export const MyPage: React.FC = () => {
       <Card title="마이페이지">
         <div className="text-center mb-6">
           <img
-            src={
-              currentUser.profileImageUrl ||
-              `https://picsum.photos/seed/${currentUser.id}/128/128`
-            }
+            src={getProfileImageSrc(
+              currentUser.profileImageUrl,
+              currentUser.id,
+              128
+            )}
             alt={currentUser.name || "User Profile"}
             className="w-32 h-32 rounded-full mx-auto mb-4 border-4 border-primary"
+            onError={(e) => handleImageError(e, currentUser.id, 128)}
           />
           <h2 className="text-2xl font-semibold text-neutral-800">
             {currentUser.name}
@@ -111,7 +114,9 @@ export const ProfileEditPage: React.FC = () => {
   });
   const [customTag, setCustomTag] = useState("");
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
-  const [profileImagePreview, setProfileImagePreview] = useState<string>("");
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(
+    null
+  );
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -130,8 +135,7 @@ export const ProfileEditPage: React.FC = () => {
         avoidedStyle: currentUser.avoidedStyle || "",
       });
       setProfileImagePreview(
-        currentUser.profileImageUrl ||
-          `https://picsum.photos/seed/${currentUser.id}/150/150`
+        getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 150)
       );
     } else {
       // Redirect if no current user (should be caught by ProtectedRoute)
@@ -191,6 +195,59 @@ export const ProfileEditPage: React.FC = () => {
   const handleImageUpload = async () => {
     if (!profileImageFile) return;
 
+    // 디버깅: 토큰 상태 확인 (모든 가능한 키 확인)
+    const token = localStorage.getItem("auth_token");
+    const refreshToken = localStorage.getItem("refresh_token");
+    console.log("[DEBUG] === 토큰 상태 전체 확인 ===");
+    console.log("[DEBUG] auth_token:", token ? "존재" : "없음");
+    console.log("[DEBUG] refresh_token:", refreshToken ? "존재" : "없음");
+    console.log("[DEBUG] localStorage 전체:", Object.keys(localStorage));
+
+    // localStorage의 모든 키 출력
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        console.log(
+          `[DEBUG] ${key}:`,
+          localStorage.getItem(key)?.substring(0, 20) + "..."
+        );
+      }
+    }
+
+    console.log("[DEBUG] 파일:", profileImageFile.name, profileImageFile.type);
+
+    // 간단한 토큰 검증 (만료 체크)
+    if (token) {
+      try {
+        const tokenParts = token.split(".");
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(atob(tokenParts[1]));
+          const now = Math.floor(Date.now() / 1000);
+          console.log("[DEBUG] 토큰 만료시간:", new Date(payload.exp * 1000));
+          console.log("[DEBUG] 현재시간:", new Date(now * 1000));
+          console.log("[DEBUG] 토큰 만료됨:", payload.exp < now);
+          console.log("[DEBUG] 토큰 payload:", payload);
+        }
+      } catch (e) {
+        console.log("[DEBUG] 토큰 파싱 실패:", e);
+      }
+    }
+
+    // 현재 사용자 정보 확인
+    console.log("[DEBUG] currentUser:", currentUser?.id, currentUser?.email);
+
+    // 토큰 테스트: 다른 API 호출로 토큰 검증
+    console.log("[DEBUG] 토큰 테스트: 프로필 정보 조회 시도");
+    try {
+      const profile = await userControllerApi.getMyProfile();
+      console.log("[DEBUG] 프로필 조회 성공:", profile.email, profile.name);
+    } catch (testError) {
+      console.error("[DEBUG] 프로필 조회 실패:", testError);
+      if (testError instanceof UserApiError) {
+        console.error("[DEBUG] 프로필 조회 에러 상태:", testError.status);
+      }
+    }
+
     setIsUploadingImage(true);
     setImageError(null);
 
@@ -198,14 +255,27 @@ export const ProfileEditPage: React.FC = () => {
       const imageUrl = await userControllerApi.uploadProfileImage(
         profileImageFile
       );
+      console.log("[DEBUG] 업로드 성공:", imageUrl);
       // 성공적으로 업로드되면 컨텍스트 업데이트
       updateUserProfile({ profileImageUrl: imageUrl });
+      // 미리보기 이미지도 업데이트
+      setProfileImagePreview(
+        getProfileImageSrc(imageUrl, currentUser?.id || "", 150)
+      );
       setProfileImageFile(null);
       alert("프로필 이미지가 업로드되었습니다!");
     } catch (error) {
+      console.error("[DEBUG] 업로드 실패:", error);
       if (error instanceof UserApiError) {
+        console.error(
+          "[DEBUG] UserApiError - 상태:",
+          error.status,
+          "메시지:",
+          error.message
+        );
         setImageError(error.message);
       } else {
+        console.error("[DEBUG] 기타 에러:", error);
         setImageError("이미지 업로드 중 오류가 발생했습니다.");
       }
     } finally {
@@ -221,10 +291,10 @@ export const ProfileEditPage: React.FC = () => {
 
     try {
       await userControllerApi.deleteProfileImage();
-      // 성공적으로 삭제되면 컨텍스트 업데이트
-      updateUserProfile({ profileImageUrl: "" });
+      // 성공적으로 삭제되면 컨텍스트 업데이트 (API 문서: 삭제 시 null 반환)
+      updateUserProfile({ profileImageUrl: null });
       setProfileImagePreview(
-        `https://picsum.photos/seed/${currentUser?.id}/150/150`
+        getProfileImageSrc(null, currentUser?.id || "", 150)
       );
       alert("프로필 이미지가 삭제되었습니다!");
     } catch (error) {
@@ -292,11 +362,21 @@ export const ProfileEditPage: React.FC = () => {
       <div className="mb-8 p-4 bg-gray-50 rounded-lg">
         <h3 className="text-lg font-semibold mb-4">프로필 이미지</h3>
         <div className="flex flex-col items-center space-y-4">
-          <img
-            src={profileImagePreview}
-            alt="프로필 미리보기"
-            className="w-32 h-32 rounded-full object-cover border-2 border-primary"
-          />
+          {currentUser && (
+            <img
+              src={
+                profileImagePreview ||
+                getProfileImageSrc(
+                  currentUser.profileImageUrl,
+                  currentUser.id,
+                  150
+                )
+              }
+              alt="프로필 미리보기"
+              className="w-32 h-32 rounded-full object-cover border-2 border-primary"
+              onError={(e) => handleImageError(e, currentUser.id, 150)}
+            />
+          )}
           <Input
             type="file"
             label="이미지 선택"
@@ -319,8 +399,11 @@ export const ProfileEditPage: React.FC = () => {
                 onClick={() => {
                   setProfileImageFile(null);
                   setProfileImagePreview(
-                    currentUser?.profileImageUrl ||
-                      `https://picsum.photos/seed/${currentUser?.id}/150/150`
+                    getProfileImageSrc(
+                      currentUser?.profileImageUrl,
+                      currentUser?.id || "",
+                      150
+                    )
                   );
                 }}
                 variant="outline"
