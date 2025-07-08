@@ -10,6 +10,10 @@ import {
   CogIcon,
 } from "../../components";
 import { User, TendencyTag } from "../../types";
+import {
+  userControllerApi,
+  UserApiError,
+} from "../../services/user-controller";
 
 const availableTags: TendencyTag[] = [
   { id: "1", label: "#아침형인간" },
@@ -329,8 +333,13 @@ export const AccountSettingsPage: React.FC = () => {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState({
+    passwordChange: false,
+    accountDelete: false,
+  });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
 
   useEffect(() => {
     if (!currentUser) {
@@ -340,24 +349,111 @@ export const AccountSettingsPage: React.FC = () => {
 
   if (!currentUser) return null;
 
-  const handleSubmitPasswordChange = (e: React.FormEvent) => {
+  // 비밀번호 유효성 검사 (API 문서 기준)
+  const validatePassword = (password: string): string | null => {
+    if (password.length < 8 || password.length > 50) {
+      return "비밀번호는 8자 이상 50자 이하여야 합니다.";
+    }
+
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*()-=]/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+      return "비밀번호는 대소문자, 숫자, 특수문자(!@#$%^&*()-=)를 모두 포함해야 합니다.";
+    }
+
+    return null;
+  };
+
+  const handleSubmitPasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    // 클라이언트 측 유효성 검사
     if (newPassword !== confirmNewPassword) {
       setError("새 비밀번호가 일치하지 않습니다.");
       return;
     }
-    if (newPassword.length < 6) {
-      setError("새 비밀번호는 6자 이상이어야 합니다.");
+
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
-    // Demo password change
-    console.log("Password change attempt:", { currentPassword, newPassword });
-    setSuccess("비밀번호가 성공적으로 변경되었습니다.");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmNewPassword("");
+
+    if (currentPassword === newPassword) {
+      setError("새 비밀번호는 현재 비밀번호와 달라야 합니다.");
+      return;
+    }
+
+    setLoading((prev) => ({ ...prev, passwordChange: true }));
+
+    try {
+      await userControllerApi.changePassword({
+        currentPassword,
+        newPassword,
+      });
+
+      setSuccess("비밀번호가 성공적으로 변경되었습니다.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (err) {
+      console.error("비밀번호 변경 실패:", err);
+
+      if (err instanceof UserApiError) {
+        switch (err.status) {
+          case 401:
+            setError("현재 비밀번호가 올바르지 않습니다.");
+            break;
+          case 422:
+            setError("비밀번호 형식이 올바르지 않습니다.");
+            break;
+          default:
+            setError(err.message || "비밀번호 변경에 실패했습니다.");
+        }
+      } else {
+        setError("비밀번호 변경 중 오류가 발생했습니다.");
+      }
+    } finally {
+      setLoading((prev) => ({ ...prev, passwordChange: false }));
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+
+    setError("");
+    setLoading((prev) => ({ ...prev, accountDelete: true }));
+
+    try {
+      await userControllerApi.deleteAccount();
+
+      // 계정 삭제 성공 시 로그아웃 및 로그인 페이지로 이동
+      await logout();
+      navigate("/login", {
+        state: {
+          message: "계정이 성공적으로 삭제되었습니다.",
+        },
+      });
+    } catch (err) {
+      console.error("계정 삭제 실패:", err);
+
+      if (err instanceof UserApiError) {
+        setError(err.message || "계정 삭제에 실패했습니다.");
+      } else {
+        setError("계정 삭제 중 오류가 발생했습니다.");
+      }
+      setShowDeleteConfirm(false);
+    } finally {
+      setLoading((prev) => ({ ...prev, accountDelete: false }));
+    }
   };
 
   return (
@@ -371,6 +467,7 @@ export const AccountSettingsPage: React.FC = () => {
           required
           value={currentPassword}
           onChange={(e) => setCurrentPassword(e.target.value)}
+          disabled={loading.passwordChange}
         />
         <Input
           label="새 비밀번호"
@@ -379,6 +476,8 @@ export const AccountSettingsPage: React.FC = () => {
           required
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="8자 이상, 대소문자, 숫자, 특수문자 포함"
+          disabled={loading.passwordChange}
         />
         <Input
           label="새 비밀번호 확인"
@@ -387,6 +486,7 @@ export const AccountSettingsPage: React.FC = () => {
           required
           value={confirmNewPassword}
           onChange={(e) => setConfirmNewPassword(e.target.value)}
+          disabled={loading.passwordChange}
         />
         {error && <p className="text-sm text-red-500">{error}</p>}
         {success && <p className="text-sm text-green-500">{success}</p>}
@@ -395,11 +495,16 @@ export const AccountSettingsPage: React.FC = () => {
             type="button"
             variant="ghost"
             onClick={() => navigate("/my-page")}
+            disabled={loading.passwordChange}
           >
             취소
           </Button>
-          <Button type="submit" variant="primary">
-            비밀번호 변경
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={loading.passwordChange}
+          >
+            {loading.passwordChange ? "변경 중..." : "비밀번호 변경"}
           </Button>
         </div>
       </form>
@@ -410,9 +515,43 @@ export const AccountSettingsPage: React.FC = () => {
           계정을 삭제하면 모든 데이터가 영구적으로 제거됩니다. 이 작업은 되돌릴
           수 없습니다.
         </p>
-        <Button variant="danger" onClick={() => alert("계정 삭제 기능 (목업)")}>
-          계정 삭제 요청
-        </Button>
+
+        {!showDeleteConfirm ? (
+          <Button
+            variant="danger"
+            onClick={handleDeleteAccount}
+            disabled={loading.accountDelete}
+          >
+            계정 삭제 요청
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-800 font-medium mb-2">
+                ⚠️ 정말로 계정을 삭제하시겠습니까?
+              </p>
+              <p className="text-sm text-red-600">
+                이 작업은 되돌릴 수 없으며, 모든 데이터가 영구적으로 삭제됩니다.
+              </p>
+            </div>
+            <div className="flex space-x-3">
+              <Button
+                variant="ghost"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={loading.accountDelete}
+              >
+                취소
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDeleteAccount}
+                disabled={loading.accountDelete}
+              >
+                {loading.accountDelete ? "삭제 중..." : "계정 삭제 확인"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );
