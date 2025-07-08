@@ -424,18 +424,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const updateUserProfile = useCallback((updatedProfileData: Partial<User>) => {
-    console.log(
-      "[DEBUG AuthContext] updateUserProfile 호출됨:",
-      updatedProfileData
-    );
     setCurrentUser((prevUser: User | null) => {
       if (!prevUser) return null;
-      const newUser = { ...prevUser, ...updatedProfileData };
-      console.log("[DEBUG AuthContext] 사용자 정보 업데이트 완료:", {
-        이전: prevUser.profileImageUrl,
-        새로운: newUser.profileImageUrl,
-      });
-      return newUser;
+      // 프로필 업데이트 시에는 currentWorkspaceId와 같은 워크스페이스 관련 필드는 변경하지 않음
+      // 이렇게 하면 useEffect(currentUser, workspaces, _currentWorkspace, loading)에서
+      // 워크스페이스 초기화 로직이 불필요하게 트리거되지 않음
+      const { currentWorkspaceId, ...profileUpdate } = updatedProfileData;
+      return { ...prevUser, ...profileUpdate };
     });
   }, []);
 
@@ -674,7 +669,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
   // 초기 로드 시 첫 번째 워크스페이스 설정 또는 빈 워크스페이스 페이지로 이동
   useEffect(() => {
-    if (currentUser && !loading) {
+    // 현재 위치가 /my-page 관련 경로면 워크스페이스 초기화 로직을 실행하지 않음
+    const currentPath = window.location.hash.replace("#", "");
+    const isMyPagePath =
+      currentPath.startsWith("/my-page") || currentPath.startsWith("/users/");
+
+    if (currentUser && !loading && !isMyPagePath) {
       if (workspaces.length > 0 && !_currentWorkspace) {
         const firstWorkspace = workspaces[0];
         _setCurrentWorkspace(firstWorkspace);

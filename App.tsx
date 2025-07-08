@@ -632,12 +632,11 @@ function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
 
             <Route path="/" element={<NavigateToInitialView />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </Route>
 
           {/* 초대 링크 접속 라우트 - 초대 코드 기반 */}
           <Route path="/:inviteCode" element={<InviteCodeHandler />} />
-
-          <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </HashRouter>
     </AuthProvider>
@@ -647,23 +646,37 @@ function App() {
 const NavigateToInitialView: React.FC = () => {
   const { isAuthenticated, currentUser, workspaces, loading } = useAuth();
 
+  // 디버깅: NavigateToInitialView가 실행되는 시점 추적
+  console.log("[DEBUG NavigateToInitialView] 실행됨:", {
+    currentUrl: window.location.href,
+    isAuthenticated,
+    currentUserId: currentUser?.id,
+    workspacesCount: workspaces?.length,
+    loading,
+    timestamp: new Date().toISOString(),
+  });
+
   if (!isAuthenticated) {
+    console.log("[DEBUG NavigateToInitialView] -> /login");
     return <Navigate to="/login" replace />;
   }
 
   // 로딩 중이거나 사용자 정보가 없을 때는 로딩 화면 표시
   if (loading || !currentUser) {
+    console.log("[DEBUG NavigateToInitialView] -> 로딩 화면");
     return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
   }
 
   // 워크스페이스가 없으면 EmptyWorkspacePage로 이동
   if (!workspaces || workspaces.length === 0) {
+    console.log("[DEBUG NavigateToInitialView] -> /empty-workspace");
     return <Navigate to="/empty-workspace" replace />;
   }
 
   // 워크스페이스가 있으면 기본 워크스페이스로 이동
   const defaultWorkspaceId =
     currentUser?.currentWorkspaceId || workspaces[0]?.id;
+  console.log("[DEBUG NavigateToInitialView] -> /ws/" + defaultWorkspaceId);
   return <Navigate to={`/ws/${defaultWorkspaceId}`} replace />;
 };
 
