@@ -57,10 +57,6 @@ export interface UpdateMyProfileRequest {
   preferWorkstyle?: string;
   dislikeWorkstyle?: string;
   hashtags?: string[];
-
-  // 호환성을 위한 추가 필드들 (현재 UI에서 사용 중)
-  bio?: string; // introduction과 동일하지만 UI에서 사용
-  tags?: string[]; // hashtags와 동일하지만 UI에서 사용
 }
 
 export interface ChangePasswordRequest {

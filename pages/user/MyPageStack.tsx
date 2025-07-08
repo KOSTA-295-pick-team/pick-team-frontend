@@ -47,7 +47,7 @@ export const MyPage: React.FC = () => {
         <div className="text-center mb-6">
           <img
             src={
-              currentUser.profilePictureUrl ||
+              currentUser.profileImageUrl ||
               `https://picsum.photos/seed/${currentUser.id}/128/128`
             }
             alt={currentUser.name || "User Profile"}
@@ -97,7 +97,7 @@ export const MyPage: React.FC = () => {
 };
 
 export const ProfileEditPage: React.FC = () => {
-  const { currentUser, updateUserProfile } = useAuth(); // Use updateUserProfile from context
+  const { currentUser, updateUserProfile } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<Partial<User>>({
     name: "",
@@ -108,9 +108,14 @@ export const ProfileEditPage: React.FC = () => {
     portfolioLink: "",
     preferredStyle: "",
     avoidedStyle: "",
-    profilePictureUrl: "",
   });
   const [customTag, setCustomTag] = useState("");
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImagePreview, setProfileImagePreview] = useState<string>("");
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentUser) {
@@ -123,10 +128,11 @@ export const ProfileEditPage: React.FC = () => {
         portfolioLink: currentUser.portfolioLink || "",
         preferredStyle: currentUser.preferredStyle || "",
         avoidedStyle: currentUser.avoidedStyle || "",
-        profilePictureUrl:
-          currentUser.profilePictureUrl ||
-          `https://picsum.photos/seed/${currentUser.id}/150/150`,
       });
+      setProfileImagePreview(
+        currentUser.profileImageUrl ||
+          `https://picsum.photos/seed/${currentUser.id}/150/150`
+      );
     } else {
       // Redirect if no current user (should be caught by ProtectedRoute)
       navigate("/login");
@@ -168,28 +174,113 @@ export const ProfileEditPage: React.FC = () => {
     }
   };
 
-  const handleProfilePictureChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleProfileImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setProfileImageFile(file);
+
+      // 프리뷰 생성
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData((prev) => ({
-          ...prev,
-          profilePictureUrl: reader.result as string,
-        }));
+        setProfileImagePreview(reader.result as string);
       };
-      reader.readAsDataURL(e.target.files[0]);
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleImageUpload = async () => {
+    if (!profileImageFile) return;
+
+    setIsUploadingImage(true);
+    setImageError(null);
+
+    try {
+      const imageUrl = await userControllerApi.uploadProfileImage(
+        profileImageFile
+      );
+      // 성공적으로 업로드되면 컨텍스트 업데이트
+      updateUserProfile({ profileImageUrl: imageUrl });
+      setProfileImageFile(null);
+      alert("프로필 이미지가 업로드되었습니다!");
+    } catch (error) {
+      if (error instanceof UserApiError) {
+        setImageError(error.message);
+      } else {
+        setImageError("이미지 업로드 중 오류가 발생했습니다.");
+      }
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleImageDelete = async () => {
+    if (!confirm("프로필 이미지를 삭제하시겠습니까?")) return;
+
+    setIsUploadingImage(true);
+    setImageError(null);
+
+    try {
+      await userControllerApi.deleteProfileImage();
+      // 성공적으로 삭제되면 컨텍스트 업데이트
+      updateUserProfile({ profileImageUrl: "" });
+      setProfileImagePreview(
+        `https://picsum.photos/seed/${currentUser?.id}/150/150`
+      );
+      alert("프로필 이미지가 삭제되었습니다!");
+    } catch (error) {
+      if (error instanceof UserApiError) {
+        setImageError(error.message);
+      } else {
+        setImageError("이미지 삭제 중 오류가 발생했습니다.");
+      }
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser) {
-      // const updatedUser: User = { ...currentUser, ...formData };
-      updateUserProfile(formData); // Update context with new user data
-      alert("프로필이 업데이트되었습니다!");
+    if (!currentUser) return;
+
+    setIsUpdatingProfile(true);
+    setProfileError(null);
+
+    try {
+      // API 문서 기준으로 UpdateMyProfileRequest 타입에 맞게 데이터 변환
+      const updateData: any = {
+        name: formData.name,
+        age: formData.age,
+        mbti: formData.mbti,
+        hashtags: formData.tags, // UI의 tags → API의 hashtags
+        introduction: formData.bio, // UI의 bio → API의 introduction
+        portfolio: formData.portfolioLink, // UI의 portfolioLink → API의 portfolio
+        preferWorkstyle: formData.preferredStyle, // UI의 preferredStyle → API의 preferWorkstyle
+        dislikeWorkstyle: formData.avoidedStyle, // UI의 avoidedStyle → API의 dislikeWorkstyle
+      };
+
+      // undefined 필드 제거
+      Object.keys(updateData).forEach((key) => {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+        }
+      });
+
+      await userControllerApi.updateMyProfile(updateData);
+
+      // 성공적으로 업데이트되면 컨텍스트 업데이트 (이미지 URL 제외)
+      updateUserProfile(formData);
+      // 성공 시 마이페이지로 이동
       navigate("/my-page");
+    } catch (error) {
+      if (error instanceof UserApiError) {
+        setProfileError(error.message);
+      } else {
+        setProfileError("프로필 수정 중 오류가 발생했습니다.");
+      }
+      // 실패 시 화면 최상단으로 스크롤
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -197,24 +288,71 @@ export const ProfileEditPage: React.FC = () => {
 
   return (
     <Card title="프로필 정보 수정">
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* 프로필 이미지 관리 섹션 - 별도로 분리 */}
+      <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+        <h3 className="text-lg font-semibold mb-4">프로필 이미지</h3>
         <div className="flex flex-col items-center space-y-4">
           <img
-            src={
-              formData.profilePictureUrl ||
-              `https://picsum.photos/seed/${currentUser.id}/150/150`
-            }
+            src={profileImagePreview}
             alt="프로필 미리보기"
             className="w-32 h-32 rounded-full object-cover border-2 border-primary"
           />
           <Input
             type="file"
-            label="프로필 사진 변경"
+            label="이미지 선택"
             accept="image/*"
-            onChange={handleProfilePictureChange}
+            onChange={handleProfileImageChange}
             className="text-sm"
           />
+          {profileImageFile && (
+            <div className="flex space-x-2">
+              <Button
+                type="button"
+                onClick={handleImageUpload}
+                disabled={isUploadingImage}
+                size="sm"
+              >
+                {isUploadingImage ? "업로드 중..." : "이미지 업로드"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setProfileImageFile(null);
+                  setProfileImagePreview(
+                    currentUser?.profileImageUrl ||
+                      `https://picsum.photos/seed/${currentUser?.id}/150/150`
+                  );
+                }}
+                variant="outline"
+                size="sm"
+              >
+                취소
+              </Button>
+            </div>
+          )}
+          {currentUser?.profileImageUrl && (
+            <Button
+              type="button"
+              onClick={handleImageDelete}
+              disabled={isUploadingImage}
+              variant="ghost"
+              size="sm"
+              className="text-red-600 hover:text-red-700"
+            >
+              {isUploadingImage ? "삭제 중..." : "이미지 삭제"}
+            </Button>
+          )}
+          {imageError && <p className="text-red-600 text-sm">{imageError}</p>}
         </div>
+      </div>
+
+      {/* 프로필 정보 수정 폼 */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {profileError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+            {profileError}
+          </div>
+        )}
 
         <Input
           label="이름"
@@ -315,11 +453,12 @@ export const ProfileEditPage: React.FC = () => {
             type="button"
             variant="ghost"
             onClick={() => navigate("/my-page")}
+            disabled={isUpdatingProfile}
           >
             취소
           </Button>
-          <Button type="submit" variant="primary">
-            저장
+          <Button type="submit" variant="primary" disabled={isUpdatingProfile}>
+            {isUpdatingProfile ? "저장 중..." : "저장"}
           </Button>
         </div>
       </form>
