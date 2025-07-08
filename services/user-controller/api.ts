@@ -90,12 +90,8 @@ async function userApiRequest<T>(
   const url = `${API_BASE_URL}${endpoint}`;
   const token = tokenManager.getAccessToken();
 
-  console.log("[DEBUG userApiRequest] 시작:", endpoint);
-  console.log("[DEBUG userApiRequest] 토큰:", token ? "존재" : "없음");
-
   // FormData인 경우 Content-Type 헤더를 설정하지 않음 (브라우저가 자동 설정)
   const isFormData = options.body instanceof FormData;
-  console.log("[DEBUG userApiRequest] FormData 여부:", isFormData);
 
   // 헤더 객체 생성
   const headers: HeadersInit = {};
@@ -126,24 +122,13 @@ async function userApiRequest<T>(
     headers,
   };
 
-  console.log("[DEBUG userApiRequest] 최종 헤더:", config.headers);
-
   try {
-    console.log("[DEBUG userApiRequest] fetch 시작:", url);
     const response = await fetch(url, config);
-    console.log(
-      "[DEBUG userApiRequest] fetch 응답:",
-      response.status,
-      response.statusText
-    );
 
     // 401 에러 시 토큰 갱신 시도
     if (response.status === 401 && !isRefreshing) {
-      console.log("[DEBUG userApiRequest] 401 에러 감지, 토큰 갱신 시도");
-
       // 토큰 갱신 중인 경우 대기
       if (isRefreshing) {
-        console.log("[DEBUG userApiRequest] 이미 토큰 갱신 중, 대기");
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(() => {
@@ -154,7 +139,6 @@ async function userApiRequest<T>(
       isRefreshing = true;
 
       try {
-        console.log("[DEBUG userApiRequest] refreshToken 호출");
         await refreshToken();
 
         // 대기 중인 요청들 처리
@@ -165,10 +149,6 @@ async function userApiRequest<T>(
 
         // 새 토큰으로 원래 요청 재시도
         const newToken = tokenManager.getAccessToken();
-        console.log(
-          "[DEBUG userApiRequest] 새 토큰으로 재시도:",
-          newToken ? "존재" : "없음"
-        );
 
         const retryConfig: RequestInit = {
           ...config,
@@ -178,16 +158,10 @@ async function userApiRequest<T>(
           },
         };
 
-        console.log("[DEBUG userApiRequest] 재시도 헤더:", retryConfig.headers);
         const retryResponse = await fetch(url, retryConfig);
-        console.log(
-          "[DEBUG userApiRequest] 재시도 응답:",
-          retryResponse.status
-        );
 
         if (!retryResponse.ok) {
           const errorData = await retryResponse.text();
-          console.error("[DEBUG userApiRequest] 재시도 실패:", errorData);
           throw new UserApiError(
             retryResponse.status,
             errorData || `HTTP ${retryResponse.status}`
@@ -201,7 +175,6 @@ async function userApiRequest<T>(
 
         return (await retryResponse.text()) as T;
       } catch (refreshError) {
-        console.error("[DEBUG userApiRequest] 토큰 갱신 실패:", refreshError);
         // 대기 중인 요청들에게 에러 전파
         failedQueue.forEach(({ reject }) => {
           reject(refreshError);
@@ -216,11 +189,6 @@ async function userApiRequest<T>(
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error(
-        "[DEBUG userApiRequest] HTTP 에러:",
-        response.status,
-        errorData
-      );
       throw new UserApiError(
         response.status,
         errorData || `HTTP ${response.status}`
@@ -230,15 +198,12 @@ async function userApiRequest<T>(
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       const jsonData = await response.json();
-      console.log("[DEBUG userApiRequest] JSON 응답:", jsonData);
       return jsonData;
     }
 
     const textData = await response.text();
-    console.log("[DEBUG userApiRequest] 텍스트 응답:", textData);
     return textData as T;
   } catch (error) {
-    console.error("[DEBUG userApiRequest] 캐치된 에러:", error);
     if (error instanceof UserApiError) {
       throw error;
     }

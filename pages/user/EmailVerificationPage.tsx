@@ -57,7 +57,6 @@ export const EmailVerificationPage: React.FC = () => {
         setError("인증 코드가 올바르지 않습니다. 다시 확인해주세요.");
       }
     } catch (err) {
-      console.error("이메일 인증 오류:", err);
       if (err instanceof UserApiError) {
         if (err.status === 400) {
           setError("잘못된 인증 코드입니다. 다시 입력해주세요.");
@@ -87,7 +86,6 @@ export const EmailVerificationPage: React.FC = () => {
       await userControllerApi.requestEmailVerification({ email });
       alert(`인증 메일이 ${email}로 재전송되었습니다.`);
     } catch (err) {
-      console.error("인증 메일 재전송 오류:", err);
       if (err instanceof UserApiError) {
         setError(err.message || "인증 메일 재전송 중 오류가 발생했습니다.");
       } else {

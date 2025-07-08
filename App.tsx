@@ -581,37 +581,23 @@ function App() {
 const NavigateToInitialView: React.FC = () => {
   const { isAuthenticated, currentUser, workspaces, loading } = useAuth();
 
-  // 디버깅: NavigateToInitialView가 실행되는 시점 추적
-  console.log("[DEBUG NavigateToInitialView] 실행됨:", {
-    currentUrl: window.location.href,
-    isAuthenticated,
-    currentUserId: currentUser?.id,
-    workspacesCount: workspaces?.length,
-    loading,
-    timestamp: new Date().toISOString(),
-  });
-
   if (!isAuthenticated) {
-    console.log("[DEBUG NavigateToInitialView] -> /login");
     return <Navigate to="/login" replace />;
   }
 
   // 로딩 중이거나 사용자 정보가 없을 때는 로딩 화면 표시
   if (loading || !currentUser) {
-    console.log("[DEBUG NavigateToInitialView] -> 로딩 화면");
     return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
   }
 
   // 워크스페이스가 없으면 EmptyWorkspacePage로 이동
   if (!workspaces || workspaces.length === 0) {
-    console.log("[DEBUG NavigateToInitialView] -> /empty-workspace");
     return <Navigate to="/empty-workspace" replace />;
   }
 
   // 워크스페이스가 있으면 기본 워크스페이스로 이동
   const defaultWorkspaceId =
     currentUser?.currentWorkspaceId || workspaces[0]?.id;
-  console.log("[DEBUG NavigateToInitialView] -> /ws/" + defaultWorkspaceId);
   return <Navigate to={`/ws/${defaultWorkspaceId}`} replace />;
 };
 
@@ -656,7 +642,6 @@ const InviteCodeHandler: React.FC = () => {
         setError("워크스페이스 참여에 실패했습니다.");
       }
     } catch (err: any) {
-      console.error("Auto join error:", err);
       if (err.message?.includes("비밀번호")) {
         setNeedsPassword(true);
         setError("이 워크스페이스는 비밀번호가 필요합니다.");

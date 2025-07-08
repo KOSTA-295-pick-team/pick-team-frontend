@@ -37,7 +37,6 @@ export const LoginPage: React.FC = () => {
   useEffect(() => {
     if (inviteCode) {
       // 초대 코드가 있으면 사용자에게 알림
-      console.log("초대 코드로 접속:", inviteCode);
     }
   }, [inviteCode]);
 
@@ -65,7 +64,6 @@ export const LoginPage: React.FC = () => {
             return;
           }
         } catch (err) {
-          console.error("Auto join after login error:", err);
           // 실패해도 일단 홈으로 이동하고, 수동으로 참여하도록 안내
           setLocalError(
             "로그인은 성공했지만 워크스페이스 참여에 실패했습니다. 수동으로 참여해주세요."
@@ -77,7 +75,6 @@ export const LoginPage: React.FC = () => {
     } catch (err) {
       // 에러 처리는 AuthContext에서 이미 처리됨
       // 여기서는 추가 처리만 수행
-      console.error("로그인 페이지에서 오류:", err);
     } finally {
       setLoading(false);
     }
@@ -227,7 +224,6 @@ export const SignupPage: React.FC = () => {
       });
       setPasswordValidation(result);
     } catch (err) {
-      console.warn("비밀번호 유효성 검사 실패:", err);
       setPasswordValidation({ isValid: false, message: "비밀번호 검증 실패" });
     } finally {
       setLoading((prev) => ({ ...prev, passwordValidation: false }));
@@ -272,10 +268,7 @@ export const SignupPage: React.FC = () => {
       await userControllerApi.requestEmailVerification({ email });
       setIsCodeSent(true);
       setSuccess("인증 메일이 발송되었습니다.");
-      console.log("이메일 인증 코드 발송 성공:", email);
-      console.log("isCodeSent 상태 설정됨:", true); // 디버깅용
     } catch (err) {
-      console.error("이메일 인증 코드 발송 실패:", err);
       if (err instanceof UserApiError) {
         setError(err.message || "이메일 인증 코드 발송에 실패했습니다.");
       } else {
@@ -301,12 +294,10 @@ export const SignupPage: React.FC = () => {
       if (isVerified) {
         setIsEmailVerified(true);
         setSuccess("이메일 인증이 완료되었습니다.");
-        console.log("이메일 인증 성공:", email);
       } else {
         setError("인증 코드가 올바르지 않습니다.");
       }
     } catch (err) {
-      console.error("이메일 인증 코드 확인 실패:", err);
       if (err instanceof UserApiError) {
         setError(err.message || "인증 코드 확인에 실패했습니다.");
       } else {
@@ -328,15 +319,12 @@ export const SignupPage: React.FC = () => {
         confirmPassword,
       });
 
-      console.log("회원가입 완료:", email);
-
       // 성공 시 로그인 페이지로 이동
       navigate("/login", {
         state: { email },
         replace: true,
       });
     } catch (err) {
-      console.error("회원가입 실패:", err);
       if (err instanceof UserApiError) {
         setError(err.message || "회원가입에 실패했습니다.");
       } else {

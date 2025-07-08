@@ -260,9 +260,6 @@ export const ProfileEditPage: React.FC = () => {
           .filter((tag) => {
             // 서버 규칙: 한글, 영문, 숫자, 언더스코어만 허용
             const isValid = /^[가-힣a-zA-Z0-9_]+$/.test(tag);
-            if (!isValid) {
-              console.warn(`유효하지 않은 해시태그: ${tag}`);
-            }
             return isValid && tag.length > 0;
           }) || [];
 
@@ -542,8 +539,6 @@ export const AccountSettingsPage: React.FC = () => {
       setNewPassword("");
       setConfirmNewPassword("");
     } catch (err) {
-      console.error("비밀번호 변경 실패:", err);
-
       if (err instanceof UserApiError) {
         switch (err.status) {
           case 401:
@@ -583,8 +578,6 @@ export const AccountSettingsPage: React.FC = () => {
         },
       });
     } catch (err) {
-      console.error("계정 삭제 실패:", err);
-
       if (err instanceof UserApiError) {
         setError(err.message || "계정 삭제에 실패했습니다.");
       } else {
