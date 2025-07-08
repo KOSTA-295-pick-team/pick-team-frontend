@@ -8,26 +8,14 @@ import {
   TextArea,
   UserIcon,
   CogIcon,
+  HashtagAutocomplete,
 } from "../../components";
-import { User, TendencyTag } from "../../types";
+import { User } from "../../types";
 import {
   userControllerApi,
   UserApiError,
 } from "../../services/user-controller";
 import { getProfileImageSrc, handleImageError } from "../../utils/avatar";
-
-const availableTags: TendencyTag[] = [
-  { id: "1", label: "#아침형인간" },
-  { id: "2", label: "#저녁형인간" },
-  { id: "3", label: "#리더역할선호" },
-  { id: "4", label: "#팔로워역할선호" },
-  { id: "5", label: "#계획적" },
-  { id: "6", label: "#즉흥적" },
-  { id: "7", label: "#ISTJ" },
-  { id: "8", label: "#꼼꼼함" },
-  { id: "9", label: "#아이디어뱅크" },
-  { id: "10", label: "#커뮤니케이션중요" },
-];
 
 export const MyPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -114,7 +102,6 @@ export const ProfileEditPage: React.FC = () => {
     preferredStyle: "",
     avoidedStyle: "",
   });
-  const [customTag, setCustomTag] = useState("");
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(
     null
@@ -163,31 +150,6 @@ export const ProfileEditPage: React.FC = () => {
       ...prev,
       [name]: name === "age" ? (value ? parseInt(value) : undefined) : value,
     }));
-  };
-
-  const handleTagToggle = (tagLabel: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      tags: prev.tags?.includes(tagLabel)
-        ? prev.tags.filter((t) => t !== tagLabel)
-        : [...(prev.tags || []), tagLabel],
-    }));
-  };
-
-  const handleAddCustomTag = () => {
-    if (
-      customTag &&
-      !formData.tags?.includes(
-        customTag.startsWith("#") ? customTag : `#${customTag}`
-      )
-    ) {
-      const newTag = customTag.startsWith("#") ? customTag : `#${customTag}`;
-      setFormData((prev) => ({
-        ...prev,
-        tags: [...(prev.tags || []), newTag],
-      }));
-      setCustomTag("");
-    }
   };
 
   const handleProfileImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,12 +253,25 @@ export const ProfileEditPage: React.FC = () => {
     setProfileError(null);
 
     try {
+      // 해시태그 전처리: # 기호 제거 및 서버 규칙에 맞게 필터링
+      const processedHashtags =
+        formData.tags
+          ?.map((tag) => tag.replace(/^#/, "")) // # 기호 제거
+          .filter((tag) => {
+            // 서버 규칙: 한글, 영문, 숫자, 언더스코어만 허용
+            const isValid = /^[가-힣a-zA-Z0-9_]+$/.test(tag);
+            if (!isValid) {
+              console.warn(`유효하지 않은 해시태그: ${tag}`);
+            }
+            return isValid && tag.length > 0;
+          }) || [];
+
       // API 문서 기준으로 UpdateMyProfileRequest 타입에 맞게 데이터 변환
       const updateData: any = {
         name: formData.name,
         age: formData.age,
         mbti: formData.mbti,
-        hashtags: formData.tags, // UI의 tags → API의 hashtags
+        hashtags: processedHashtags, // 전처리된 해시태그 사용
         introduction: formData.bio, // UI의 bio → API의 introduction
         portfolio: formData.portfolioLink, // UI의 portfolioLink → API의 portfolio
         preferWorkstyle: formData.preferredStyle, // UI의 preferredStyle → API의 preferWorkstyle
@@ -438,45 +413,12 @@ export const ProfileEditPage: React.FC = () => {
           <label className="block text-sm font-medium text-neutral-700 mb-1">
             성향 태그
           </label>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {availableTags.map((tag) => (
-              <button
-                type="button"
-                key={tag.id}
-                onClick={() => handleTagToggle(tag.label)}
-                className={`px-3 py-1.5 text-sm rounded-full border transition-colors
-                  ${
-                    formData.tags?.includes(tag.label)
-                      ? "bg-primary text-white border-primary"
-                      : "bg-neutral-100 text-neutral-700 border-neutral-300 hover:bg-neutral-200"
-                  }`}
-              >
-                {tag.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              name="customTag"
-              value={customTag}
-              onChange={(e) => setCustomTag(e.target.value)}
-              placeholder="직접 태그 입력 (예: #성실함)"
-              className="flex-grow"
-            />
-            <Button
-              type="button"
-              onClick={handleAddCustomTag}
-              variant="outline"
-              size="md"
-            >
-              추가
-            </Button>
-          </div>
-          {formData.tags && formData.tags.length > 0 && (
-            <div className="mt-2 text-sm text-neutral-600">
-              선택된 태그: {formData.tags.join(", ")}
-            </div>
-          )}
+          <HashtagAutocomplete
+            selectedTags={formData.tags || []}
+            onTagsChange={(tags) => setFormData((prev) => ({ ...prev, tags }))}
+            maxTags={20}
+            placeholder="해시태그를 입력하세요 (예: React, 팀워크, 리더십)"
+          />
         </div>
 
         <TextArea
