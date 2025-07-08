@@ -201,6 +201,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         try {
           // UserController API로 현재 사용자 정보 조회 (토큰 유효성 확인)
           const userData = await userControllerApi.getMyProfile();
+
+          console.log("[DEBUG 자동로그인] getMyProfile 반환값:", userData);
+          console.log(
+            "[DEBUG 자동로그인] profileImageUrl:",
+            userData.profileImageUrl
+          );
+          console.log(
+            "[DEBUG 자동로그인] profileImage:",
+            userData.profileImage
+          );
+          console.log(
+            "[DEBUG 자동로그인] profilePictureUrl:",
+            userData.profilePictureUrl
+          );
+
           setCurrentUser(userData);
           console.log("자동 로그인 성공:", userData.email);
 
@@ -301,10 +316,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
           portfolio: response.user.portfolio,
           preferWorkstyle: response.user.preferWorkstyle,
           dislikeWorkstyle: response.user.dislikeWorkstyle,
-          likes: response.user.likes,
-          dislikes: response.user.dislikes,
-          profileImage: response.user.profileImage,
-          tags: response.user.tags || [],
+          profileImage: response.user.profileImageUrl || undefined, // null을 undefined로 변환
+          profileImageUrl: response.user.profileImageUrl, // 🔥 핵심 필드 추가!
+          tags: response.user.hashtags || response.user.tags || [],
 
           // 호환성을 위한 매핑
           bio: response.user.introduction,
@@ -312,9 +326,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
           preferredStyle: response.user.preferWorkstyle,
           avoidedStyle: response.user.dislikeWorkstyle,
           profilePictureUrl:
-            response.user.profileImage ||
+            response.user.profileImageUrl ||
             `https://picsum.photos/seed/${response.user.email}/100/100`,
         };
+
+        console.log(
+          "[DEBUG 로그인] 서버 응답 profileImageUrl:",
+          response.user.profileImageUrl
+        );
+        console.log(
+          "[DEBUG 로그인] 최종 User 객체 profileImageUrl:",
+          user.profileImageUrl
+        );
 
         // 현재 사용자 설정
         setCurrentUser(user);
@@ -401,9 +424,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const updateUserProfile = useCallback((updatedProfileData: Partial<User>) => {
+    console.log(
+      "[DEBUG AuthContext] updateUserProfile 호출됨:",
+      updatedProfileData
+    );
     setCurrentUser((prevUser: User | null) => {
       if (!prevUser) return null;
-      return { ...prevUser, ...updatedProfileData };
+      const newUser = { ...prevUser, ...updatedProfileData };
+      console.log("[DEBUG AuthContext] 사용자 정보 업데이트 완료:", {
+        이전: prevUser.profileImageUrl,
+        새로운: newUser.profileImageUrl,
+      });
+      return newUser;
     });
   }, []);
 

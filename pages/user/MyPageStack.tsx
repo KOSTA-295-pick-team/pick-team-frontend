@@ -47,6 +47,7 @@ export const MyPage: React.FC = () => {
       <Card title="마이페이지">
         <div className="text-center mb-6">
           <img
+            key={currentUser.profileImageUrl || "default"} // 강제 리렌더링을 위한 key
             src={getProfileImageSrc(
               currentUser.profileImageUrl,
               currentUser.id,
@@ -55,6 +56,12 @@ export const MyPage: React.FC = () => {
             alt={currentUser.name || "User Profile"}
             className="w-32 h-32 rounded-full mx-auto mb-4 border-4 border-primary"
             onError={(e) => handleImageError(e, currentUser.id, 128)}
+            onLoad={() =>
+              console.log(
+                "[DEBUG] MyPage 이미지 로드됨:",
+                currentUser.profileImageUrl
+              )
+            }
           />
           <h2 className="text-2xl font-semibold text-neutral-800">
             {currentUser.name}
@@ -102,6 +109,7 @@ export const MyPage: React.FC = () => {
 export const ProfileEditPage: React.FC = () => {
   const { currentUser, updateUserProfile } = useAuth();
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState<Partial<User>>({
     name: "",
     age: undefined,
@@ -134,6 +142,7 @@ export const ProfileEditPage: React.FC = () => {
         preferredStyle: currentUser.preferredStyle || "",
         avoidedStyle: currentUser.avoidedStyle || "",
       });
+      // 이미지 미리보기만 별도로 업데이트 (항상 최신 이미지 반영)
       setProfileImagePreview(
         getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 150)
       );
@@ -141,7 +150,8 @@ export const ProfileEditPage: React.FC = () => {
       // Redirect if no current user (should be caught by ProtectedRoute)
       navigate("/login");
     }
-  }, [currentUser, navigate]);
+    // currentUser.profileImageUrl 변경은 의존성에서 제외하여 불필요한 리렌더링 방지
+  }, [currentUser?.id, currentUser?.name, currentUser?.email, navigate]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -255,15 +265,51 @@ export const ProfileEditPage: React.FC = () => {
       const imageUrl = await userControllerApi.uploadProfileImage(
         profileImageFile
       );
-      console.log("[DEBUG] 업로드 성공:", imageUrl);
-      // 성공적으로 업로드되면 컨텍스트 업데이트
-      updateUserProfile({ profileImageUrl: imageUrl });
-      // 미리보기 이미지도 업데이트
+      console.log("[DEBUG] 1단계: 이미지 업로드 성공:", imageUrl);
+
+      // 2단계: 서버의 사용자 프로필에도 이미지 URL 업데이트
+      console.log("[DEBUG] 2단계: 프로필 정보 업데이트 시작");
+      await userControllerApi.updateMyProfile({
+        profileImageUrl: imageUrl,
+      });
+      console.log("[DEBUG] 2단계: 프로필 정보 업데이트 완료");
+
+      // 3단계: 서버에서 최신 사용자 정보를 다시 가져와서 Context 동기화
+      console.log("[DEBUG] 3단계: 서버에서 최신 사용자 정보 재조회 시작");
+      const updatedProfile = await userControllerApi.getMyProfile();
+      console.log(
+        "[DEBUG] 3단계: 서버에서 최신 사용자 정보 재조회 완료",
+        updatedProfile.profileImageUrl
+      );
+
+      // 로컬 미리보기 이미지 먼저 업데이트
       setProfileImagePreview(
         getProfileImageSrc(imageUrl, currentUser?.id || "", 150)
       );
       setProfileImageFile(null);
-      alert("프로필 이미지가 업로드되었습니다!");
+
+      // 서버에서 가져온 최신 정보로 Context 업데이트
+      console.log(
+        "[DEBUG] Context 업데이트 전 currentUser.profileImageUrl:",
+        currentUser?.profileImageUrl
+      );
+      updateUserProfile({
+        profileImageUrl: updatedProfile.profileImageUrl,
+        // 다른 필드들도 최신 상태로 동기화
+        name: updatedProfile.name,
+        email: updatedProfile.email,
+        age: updatedProfile.age,
+        mbti: updatedProfile.mbti,
+        bio: updatedProfile.introduction,
+        portfolioLink: updatedProfile.portfolio,
+        preferredStyle: updatedProfile.preferWorkstyle,
+        avoidedStyle: updatedProfile.dislikeWorkstyle,
+      });
+      console.log(
+        "[DEBUG] Context 업데이트 완료, 서버 동기화된 이미지 URL:",
+        updatedProfile.profileImageUrl
+      );
+      console.log("[DEBUG] 프로필 이미지 업로드 및 동기화 완료 - 페이지 유지");
     } catch (error) {
       console.error("[DEBUG] 업로드 실패:", error);
       if (error instanceof UserApiError) {
@@ -290,13 +336,25 @@ export const ProfileEditPage: React.FC = () => {
     setImageError(null);
 
     try {
+      console.log("[DEBUG] 1단계: 이미지 파일 삭제 시작");
       await userControllerApi.deleteProfileImage();
-      // 성공적으로 삭제되면 컨텍스트 업데이트 (API 문서: 삭제 시 null 반환)
+      console.log("[DEBUG] 1단계: 이미지 파일 삭제 완료");
+
+      // 2단계: 서버의 사용자 프로필에서도 이미지 URL 제거
+      console.log(
+        "[DEBUG] 2단계: 프로필 정보 업데이트 시작 (이미지 URL null로 설정)"
+      );
+      await userControllerApi.updateMyProfile({
+        profileImageUrl: null,
+      });
+      console.log("[DEBUG] 2단계: 프로필 정보 업데이트 완료");
+
+      // 성공적으로 삭제되면 컨텍스트 업데이트
       updateUserProfile({ profileImageUrl: null });
       setProfileImagePreview(
         getProfileImageSrc(null, currentUser?.id || "", 150)
       );
-      alert("프로필 이미지가 삭제되었습니다!");
+      console.log("[DEBUG] 프로필 이미지 삭제 및 동기화 완료");
     } catch (error) {
       if (error instanceof UserApiError) {
         setImageError(error.message);
@@ -339,6 +397,7 @@ export const ProfileEditPage: React.FC = () => {
 
       // 성공적으로 업데이트되면 컨텍스트 업데이트 (이미지 URL 제외)
       updateUserProfile(formData);
+
       // 성공 시 마이페이지로 이동
       navigate("/my-page");
     } catch (error) {
