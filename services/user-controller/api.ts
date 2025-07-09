@@ -645,4 +645,55 @@ export const userControllerApi = {
       );
     }
   },
+
+  // OAuth 토큰 교환 (보안 강화된 OAuth 시스템용)
+  exchangeOAuthToken: async (
+    tempCode: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    token: string;
+    refreshToken?: string;
+    user?: {
+      id: number;
+      email: string;
+      name: string;
+      profilePictureUrl?: string;
+      mbti?: string;
+      tags?: string[];
+      provider?: string;
+    };
+  }> => {
+    console.log(
+      "[DEBUG API] OAuth 토큰 교환 시작, tempCode:",
+      tempCode ? "존재" : "없음"
+    );
+
+    const response = await fetch(`${API_BASE_URL}/auth/oauth/exchange-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tempCode }),
+    });
+
+    console.log("[DEBUG API] OAuth 토큰 교환 응답 상태:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage =
+        errorData.message ||
+        `HTTP ${response.status}: 토큰 교환에 실패했습니다`;
+      console.error("[DEBUG API] OAuth 토큰 교환 실패:", errorMessage);
+      throw new UserApiError(response.status, errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("[DEBUG API] OAuth 토큰 교환 성공:", {
+      hasToken: !!data.token,
+      hasUser: !!data.user,
+    });
+
+    return data;
+  },
 };

@@ -15,6 +15,7 @@ import { LoginPage, SignupPage } from "./pages/user/AuthPage";
 import { EmailVerificationPage } from "./pages/user/EmailVerificationPage";
 import { OAuthCallbackPage } from "./pages/user/OAuthCallbackPage";
 import { OAuthSuccessPage } from "./pages/user/OAuthSuccessPage";
+import { ForgotPasswordPage } from "./pages/user/ForgotPasswordPage";
 import {
   MyPage,
   ProfileEditPage,
@@ -538,6 +539,9 @@ function App() {
 
           {/* OAuth 성공 라우트 */}
           <Route path="/oauth/success" element={<OAuthSuccessPage />} />
+
+          {/* 비밀번호 찾기 라우트 */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="/empty-workspace" element={<EmptyWorkspacePage />} />
