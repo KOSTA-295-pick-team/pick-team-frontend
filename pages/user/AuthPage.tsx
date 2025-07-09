@@ -600,9 +600,11 @@ export const SignupPage: React.FC = () => {
                 onClick={() => handleOAuthSignup("kakao")}
                 type="button"
               >
-                <div className="w-5 h-5 mr-2 rounded-full bg-[#3C1E1E] flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">K</span>
-                </div>
+                <img
+                  src="https://developers.kakao.com/assets/img/about/logos/kakaotalksharing/kakaotalk_sharing_btn_medium.png"
+                  alt="Kakao"
+                  className="w-5 h-5 mr-2"
+                />
                 Kakao로 가입
               </Button>
             </div>

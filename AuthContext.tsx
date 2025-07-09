@@ -236,11 +236,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
   // 워크스페이스 목록을 새로고침하는 함수
   const refreshWorkspaces = useCallback(async () => {
+    console.log("[DEBUG refreshWorkspaces] 시작");
     setLoading(true);
     try {
+      console.log("[DEBUG refreshWorkspaces] API 호출 시작");
       const fetchedWorkspaces = await workspaceApi.getMyWorkspaces();
       console.log(
-        "워크스페이스 목록 조회 결과:",
+        "[DEBUG refreshWorkspaces] 워크스페이스 목록 조회 결과:",
         fetchedWorkspaces.length,
         "개",
         fetchedWorkspaces
@@ -250,13 +252,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
       // 워크스페이스가 0개가 되었을 때는 상태만 업데이트하고, 리다이렉트는 NavigateToInitialView에 위임
       if (fetchedWorkspaces.length === 0) {
-        console.log("워크스페이스가 없어서 상태 초기화");
+        console.log(
+          "[DEBUG refreshWorkspaces] 워크스페이스가 없어서 상태 초기화"
+        );
         _setCurrentWorkspace(null);
         _setCurrentTeamProject(null);
         _setCurrentChatRoom(null);
       }
     } catch (err) {
-      console.warn("워크스페이스 로드 실패, 폴백 데이터 사용:", err);
+      console.warn(
+        "[DEBUG refreshWorkspaces] 워크스페이스 로드 실패, 폴백 데이터 사용:",
+        err
+      );
       setWorkspaces(FALLBACK_WORKSPACES);
       if (err instanceof ApiError) {
         setError(err.message);
@@ -264,12 +271,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         setError("워크스페이스를 불러오는데 실패했습니다.");
       }
     } finally {
+      console.log("[DEBUG refreshWorkspaces] 완료, loading을 false로 설정");
       setLoading(false);
     }
   }, []);
 
   const login = useCallback(
     async (user: User) => {
+      console.log("[DEBUG AuthContext.login] 로그인 시작:", user);
+
       const demoUserWithPic: User = {
         ...user,
         id: user.id || "1",
@@ -281,12 +291,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         mbti: user.mbti || "ISTP",
         tags: user.tags || ["#아침형인간", "#리더역할선호"],
       };
+
+      console.log("[DEBUG AuthContext.login] 사용자 설정:", demoUserWithPic);
       setCurrentUser(demoUserWithPic);
       _setCurrentTeamProject(null);
       _setCurrentChatRoom(null);
 
+      console.log("[DEBUG AuthContext.login] 워크스페이스 로드 시작");
       // 로그인 후 워크스페이스 목록 로드 (즉시 실행)
       await refreshWorkspaces();
+      console.log("[DEBUG AuthContext.login] 로그인 완료");
     },
     [refreshWorkspaces]
   );

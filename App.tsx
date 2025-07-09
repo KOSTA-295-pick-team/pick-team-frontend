@@ -1,6 +1,6 @@
 import React, { ReactNode, useState, useEffect, useMemo } from "react";
 import {
-  HashRouter,
+  BrowserRouter,
   Routes,
   Route,
   Link,
@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from "./AuthContext";
 import { LoginPage, SignupPage } from "./pages/user/AuthPage";
 import { EmailVerificationPage } from "./pages/user/EmailVerificationPage";
 import { OAuthCallbackPage } from "./pages/user/OAuthCallbackPage";
+import { OAuthSuccessPage } from "./pages/user/OAuthSuccessPage";
 import {
   MyPage,
   ProfileEditPage,
@@ -520,7 +521,7 @@ const AppLayout: React.FC = () => {
 function App() {
   return (
     <AuthProvider>
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
@@ -534,6 +535,9 @@ function App() {
             path="/oauth/:provider/callback"
             element={<OAuthCallbackPage />}
           />
+
+          {/* OAuth 성공 라우트 */}
+          <Route path="/oauth/success" element={<OAuthSuccessPage />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="/empty-workspace" element={<EmptyWorkspacePage />} />
@@ -580,7 +584,7 @@ function App() {
           {/* 초대 링크 접속 라우트 - 초대 코드 기반 */}
           <Route path="/:inviteCode" element={<InviteCodeHandler />} />
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     </AuthProvider>
   );
 }
@@ -588,23 +592,43 @@ function App() {
 const NavigateToInitialView: React.FC = () => {
   const { isAuthenticated, currentUser, workspaces, loading } = useAuth();
 
+  console.log("[DEBUG NavigateToInitialView]", {
+    isAuthenticated,
+    currentUser,
+    workspacesCount: workspaces?.length,
+    loading,
+  });
+
   if (!isAuthenticated) {
+    console.log("[DEBUG] 인증되지 않음, 로그인 페이지로 이동");
     return <Navigate to="/login" replace />;
   }
 
   // 로딩 중이거나 사용자 정보가 없을 때는 로딩 화면 표시
   if (loading || !currentUser) {
-    return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
+    console.log("[DEBUG] 로딩 중 또는 사용자 정보 없음");
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg font-medium text-neutral-700">
+            워크스페이스 정보를 불러오는 중...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // 워크스페이스가 없으면 EmptyWorkspacePage로 이동
   if (!workspaces || workspaces.length === 0) {
+    console.log("[DEBUG] 워크스페이스 없음, EmptyWorkspacePage로 이동");
     return <Navigate to="/empty-workspace" replace />;
   }
 
   // 워크스페이스가 있으면 기본 워크스페이스로 이동
   const defaultWorkspaceId =
     currentUser?.currentWorkspaceId || workspaces[0]?.id;
+  console.log("[DEBUG] 워크스페이스로 이동:", defaultWorkspaceId);
   return <Navigate to={`/ws/${defaultWorkspaceId}`} replace />;
 };
 
