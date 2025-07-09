@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
+import { tokenManager } from "../../services/tokenManager";
 
 /**
  * OAuth 성공 페이지
@@ -34,13 +35,18 @@ export const OAuthSuccessPage: React.FC = () => {
           return;
         }
 
-        // 토큰 저장
+        // 토큰 저장 (localStorage와 tokenManager 모두에 저장)
         localStorage.setItem("accessToken", accessToken);
+        tokenManager.setAccessToken(accessToken);
+
         if (refreshToken) {
           localStorage.setItem("refreshToken", refreshToken);
+          tokenManager.setRefreshToken(refreshToken);
         }
 
-        console.log("[DEBUG OAuthSuccessPage] 토큰 저장 완료");
+        console.log(
+          "[DEBUG OAuthSuccessPage] 토큰 저장 완료 (localStorage & tokenManager)"
+        );
 
         // JWT에서 사용자 정보 디코딩
         try {
