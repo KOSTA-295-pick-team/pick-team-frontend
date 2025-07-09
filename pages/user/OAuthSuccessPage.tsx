@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../AuthContext";
 import { tokenManager } from "../../services/tokenManager";
@@ -18,8 +18,16 @@ export const OAuthSuccessPage: React.FC = () => {
   const { login, refreshWorkspaces } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const hasRunRef = useRef(false); // React Strict Mode 중복 실행 방지
 
   useEffect(() => {
+    // React Strict Mode에서 중복 실행 방지
+    if (hasRunRef.current) {
+      console.log("[DEBUG OAuthSuccessPage] 중복 실행 감지, 건너뛰기");
+      return;
+    }
+    hasRunRef.current = true;
+
     const handleOAuthSuccess = async () => {
       try {
         console.log("[DEBUG OAuthSuccessPage] 시작");
@@ -52,21 +60,86 @@ export const OAuthSuccessPage: React.FC = () => {
         console.log("[DEBUG OAuthSuccessPage] 토큰 교환 API 호출 중...");
 
         // 임시 코드로 JWT 토큰 교환 (새로운 API 사용)
-        const data = await userControllerApi.exchangeOAuthToken(tempCode);
-        console.log("[DEBUG OAuthSuccessPage] 토큰 교환 성공:", {
-          hasToken: !!data.token,
-          user: data.user,
+        const response: any = await userControllerApi.exchangeOAuthToken(
+          tempCode
+        );
+        console.log("[DEBUG OAuthSuccessPage] 토큰 교환 원본 응답:", {
+          type: typeof response,
+          keys: Object.keys(response || {}),
+          response: JSON.stringify(response, null, 2),
         });
 
+        // 응답 구조 분석 및 토큰 추출 (유연하게 처리)
+        let accessToken: string | null = null;
+        let refreshToken: string | null = null;
+        let userInfo: any = null;
+
+        // 다양한 응답 구조에 대응
+        if (response) {
+          // 1차: 직접 접근
+          accessToken = response.token || response.accessToken;
+          refreshToken = response.refreshToken || null;
+          userInfo = response.user;
+
+          // 2차: data 객체 안에 있는 경우
+          if (!accessToken && response.data) {
+            accessToken = response.data.token || response.data.accessToken;
+            refreshToken = refreshToken || response.data.refreshToken || null;
+            userInfo = userInfo || response.data.user;
+          }
+
+          // 3차: result 객체 안에 있는 경우
+          if (!accessToken && response.result) {
+            accessToken = response.result.token || response.result.accessToken;
+            refreshToken = refreshToken || response.result.refreshToken || null;
+            userInfo = userInfo || response.result.user;
+          }
+        }
+
+        console.log("[DEBUG OAuthSuccessPage] 토큰 추출 결과:", {
+          hasAccessToken: !!accessToken,
+          accessTokenLength: accessToken ? accessToken.length : 0,
+          hasRefreshToken: !!refreshToken,
+          hasUserInfo: !!userInfo,
+          userInfo: userInfo
+            ? {
+                id: userInfo.id,
+                email: userInfo.email,
+                name: userInfo.name,
+              }
+            : null,
+        });
+
+        // accessToken 검증
+        if (!accessToken) {
+          console.error(
+            "[DEBUG OAuthSuccessPage] accessToken을 찾을 수 없습니다."
+          );
+
+          // refreshToken만 있는 경우 특별 처리
+          if (refreshToken) {
+            console.warn(
+              "[DEBUG OAuthSuccessPage] refreshToken만 존재, accessToken 새로고침 시도"
+            );
+            // 여기서 refreshToken으로 accessToken을 가져오는 로직을 추가할 수 있음
+            setError("액세스 토큰이 없습니다. 다시 로그인해주세요.");
+          } else {
+            setError(
+              "토큰 교환에 실패했습니다. 백엔드 응답에 토큰이 없습니다."
+            );
+          }
+          setLoading(false);
+          return;
+        }
+
         // JWT 토큰 저장 (localStorage와 tokenManager 모두에 저장)
-        const accessToken = data.token;
         localStorage.setItem("accessToken", accessToken);
         tokenManager.setAccessToken(accessToken);
 
         // refreshToken이 있으면 저장
-        if (data.refreshToken) {
-          localStorage.setItem("refreshToken", data.refreshToken);
-          tokenManager.setRefreshToken(data.refreshToken);
+        if (refreshToken) {
+          localStorage.setItem("refreshToken", refreshToken);
+          tokenManager.setRefreshToken(refreshToken);
         }
 
         console.log(
@@ -74,26 +147,26 @@ export const OAuthSuccessPage: React.FC = () => {
         );
 
         // JWT에서 사용자 정보 디코딩 또는 API 응답에서 사용자 정보 사용
-        let userInfo;
-        if (data.user) {
+        let finalUserInfo;
+        if (userInfo) {
           // API 응답에 사용자 정보가 포함된 경우
-          userInfo = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name,
-            profilePictureUrl: data.user.profilePictureUrl,
-            mbti: data.user.mbti,
-            tags: data.user.tags || [],
+          finalUserInfo = {
+            id: userInfo.id,
+            email: userInfo.email,
+            name: userInfo.name,
+            profilePictureUrl: userInfo.profilePictureUrl,
+            mbti: userInfo.mbti,
+            tags: userInfo.tags || [],
           };
           console.log(
             "[DEBUG OAuthSuccessPage] API에서 사용자 정보 획득:",
-            userInfo
+            finalUserInfo
           );
         } else {
           // JWT에서 사용자 정보 디코딩 (fallback)
           try {
             const payload = JSON.parse(atob(accessToken.split(".")[1]));
-            userInfo = {
+            finalUserInfo = {
               id: payload.sub || payload.userId,
               email: payload.email,
               name: payload.username || payload.name || payload.given_name,
@@ -103,7 +176,7 @@ export const OAuthSuccessPage: React.FC = () => {
             };
             console.log(
               "[DEBUG OAuthSuccessPage] JWT에서 사용자 정보 디코딩:",
-              userInfo
+              finalUserInfo
             );
           } catch (jwtError) {
             console.error(
@@ -117,7 +190,7 @@ export const OAuthSuccessPage: React.FC = () => {
         }
 
         // AuthContext의 login 함수 호출
-        await login(userInfo);
+        await login(finalUserInfo);
 
         console.log("[DEBUG OAuthSuccessPage] AuthContext login 완료");
 
@@ -144,11 +217,30 @@ export const OAuthSuccessPage: React.FC = () => {
       } catch (error) {
         console.error("[DEBUG OAuthSuccessPage] 전체 처리 실패:", error);
 
+        let errorMessage = "OAuth 처리 중 오류가 발생했습니다.";
+
         if (error instanceof UserApiError) {
-          setError(error.message);
-        } else {
-          setError("OAuth 처리 중 오류가 발생했습니다.");
+          errorMessage = `OAuth 인증 실패 (${error.status}): ${error.message}`;
+
+          // 특정 에러 코드에 대한 추가 정보
+          if (error.status === 400) {
+            errorMessage += " (잘못된 임시 코드)";
+          } else if (error.status === 401) {
+            errorMessage += " (인증 실패)";
+          } else if (error.status === 404) {
+            errorMessage += " (사용자를 찾을 수 없음)";
+          } else if (error.status >= 500) {
+            errorMessage += " (서버 오류)";
+          }
+        } else if (error instanceof Error) {
+          errorMessage = `OAuth 처리 오류: ${error.message}`;
         }
+
+        console.error(
+          "[DEBUG OAuthSuccessPage] 최종 에러 메시지:",
+          errorMessage
+        );
+        setError(errorMessage);
         setLoading(false);
       }
     };

@@ -689,11 +689,37 @@ export const userControllerApi = {
     }
 
     const data = await response.json();
-    console.log("[DEBUG API] OAuth 토큰 교환 성공:", {
-      hasToken: !!data.token,
-      hasUser: !!data.user,
+    console.log("[DEBUG API] OAuth 토큰 교환 원시 응답:", {
+      fullResponse: data,
+      responseKeys: Object.keys(data),
+      dataKeys: data.data ? Object.keys(data.data) : "data 없음",
     });
 
-    return data;
+    // 백엔드 응답 구조에 맞게 토큰과 사용자 정보 추출
+    let token = data.token;
+    let user = data.user;
+    let refreshToken = data.refreshToken;
+
+    // 만약 data.data 구조라면 그 안에서 추출
+    if (!token && data.data) {
+      token = data.data.token;
+      user = data.data.user || user;
+      refreshToken = data.data.refreshToken || refreshToken;
+    }
+
+    console.log("[DEBUG API] OAuth 토큰 교환 성공:", {
+      hasToken: !!token,
+      hasUser: !!user,
+      hasRefreshToken: !!refreshToken,
+      tokenLength: token ? token.length : 0,
+    });
+
+    return {
+      success: data.success,
+      message: data.message,
+      token,
+      refreshToken,
+      user,
+    };
   },
 };
