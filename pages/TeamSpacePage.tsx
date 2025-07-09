@@ -4,7 +4,7 @@ import { Button, Input, Card, Modal, TextArea, VideoCameraIcon, CalendarDaysIcon
 import { TeamProject, Announcement, CalendarEvent, User, KanbanBoard, KanbanColumn, KanbanCard as KanbanCardType, KanbanComment, BulletinPost, BulletinComment } from '../types';
 import { useAuth } from '../AuthContext';
 import { PaperClipIcon, CheckCircleIcon, Bars3Icon, TableCellsIcon, ClipboardDocumentListIcon, ChevronLeftIcon, ChevronRightIcon, PencilIcon, ChatBubbleBottomCenterTextIcon, CogIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
-import { fetchKanbanBoard, addKanbanTaskComment, updateKanbanTask } from '../services/kanbanApi';
+import { fetchKanbanBoard, addKanbanTaskComment, updateKanbanTask, createKanbanTask, deleteKanbanTask, createKanbanList } from '../services/kanbanApi';
 import { teamApi } from '../services/teamApi';
 
 // Demo Team Data - 목업 데이터 제거, 실제 API만 사용
@@ -337,26 +337,51 @@ interface KanbanCardDetailModalProps {
   onAddComment: (cardId: string, commentText: string) => void;
   onApproveCard: (cardId: string) => void;
   currentUser: User;
+  teamMembers: User[];
 }
 
 const KanbanCardDetailModal: React.FC<KanbanCardDetailModalProps> = ({
-  isOpen, onClose, card, columnTitle, onUpdateCard, onAddComment, onApproveCard, currentUser
+  isOpen, onClose, card, columnTitle, onUpdateCard, onAddComment, onApproveCard, currentUser, teamMembers
 }) => {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
+  const [editedDueDate, setEditedDueDate] = useState('');
+  const [editedAssigneeIds, setEditedAssigneeIds] = useState<string[]>([]);
   const [newComment, setNewComment] = useState('');
+  
+  const [activePopover, setActivePopover] = useState<'dueDate' | 'assignees' | null>(null);
+  const [popoverAnchorEl, setPopoverAnchorEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     if (card) {
       setEditedTitle(card.title);
       setEditedDescription(card.description || '');
+      setEditedDueDate(card.dueDate ? new Date(card.dueDate).toISOString().split('T')[0] : '');
+      setEditedAssigneeIds(card.assigneeIds || []);
     }
   }, [card]);
 
   if (!isOpen || !card) return null;
 
+  const handleOpenPopover = (event: React.MouseEvent<HTMLElement>, popoverType: 'dueDate' | 'assignees') => {
+    setPopoverAnchorEl(event.currentTarget);
+    setActivePopover(popoverType);
+  };
+
+  const handleClosePopover = () => {
+    setPopoverAnchorEl(null);
+    setActivePopover(null);
+  };
+
   const handleSave = () => {
-    onUpdateCard({ ...card, title: editedTitle, description: editedDescription });
+    handleClosePopover();
+    onUpdateCard({ 
+        ...card, 
+        title: editedTitle, 
+        description: editedDescription,
+        dueDate: editedDueDate ? new Date(editedDueDate) : undefined,
+        assigneeIds: editedAssigneeIds
+    });
   };
 
   const handleAddComment = () => {
@@ -365,114 +390,273 @@ const KanbanCardDetailModal: React.FC<KanbanCardDetailModalProps> = ({
       setNewComment('');
     }
   };
+
+  const handleAssigneeSelectionInModal = (memberId: string) => {
+    setEditedAssigneeIds(prev =>
+        prev.includes(memberId)
+            ? prev.filter(id => id !== memberId)
+            : [...prev, memberId]
+    );
+  };
   
   const isDoneColumn = columnTitle === 'Done'; 
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="작업 상세 정보" footer={
-      <div className="flex justify-between w-full">
-        <div>
-        {isDoneColumn && (
-            card.isApproved ? (
-              <Button size="sm" variant="ghost" disabled className="text-green-500" leftIcon={<CheckCircleIcon className="w-5 h-5"/>}>
-                승인 완료
-              </Button>
-            ) : (
-              <Button size="sm" variant="primary" onClick={() => onApproveCard(card.id)} leftIcon={<CheckCircleIcon className="w-5 h-5"/>}>
-                승인 요청
-              </Button>
-            )
-          )}
+        <div className="flex w-full justify-between items-center">
+            <div>
+                {isDoneColumn && (
+                    card.isApproved ? (
+                    <Button size="sm" variant="ghost" disabled className="text-green-500" leftIcon={<CheckCircleIcon className="w-5 h-5"/>}>
+                        승인 완료
+                    </Button>
+                    ) : (
+                    <Button size="sm" variant="primary" onClick={() => onApproveCard(card.id)} leftIcon={<CheckCircleIcon className="w-5 h-5"/>}>
+                        승인 요청
+                    </Button>
+                    )
+                )}
+            </div>
+            <div className="flex space-x-2">
+                <Button variant="ghost" onClick={onClose}>닫기</Button>
+                <Button onClick={handleSave}>변경사항 저장</Button>
+            </div>
         </div>
-        <div className="space-x-2">
-            <Button variant="ghost" onClick={onClose}>닫기</Button>
-            <Button onClick={handleSave}>변경사항 저장</Button>
-        </div>
-      </div>
     }>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">제목</label>
-          <Input value={editedTitle} onChange={(e) => setEditedTitle(e.target.value)} className="text-lg font-semibold" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700">설명</label>
-          <TextArea value={editedDescription} onChange={(e) => setEditedDescription(e.target.value)} rows={4} />
-        </div>
-        
-        <div className="text-sm">
-          <p><span className="font-medium">상태:</span> {columnTitle}</p>
-          {card.dueDate && <p><span className="font-medium">마감일:</span> {new Date(card.dueDate).toLocaleDateString()}</p>}
-          {card.assigneeIds && card.assigneeIds.length > 0 && (
-            <p><span className="font-medium">담당자:</span> {card.assigneeIds.join(', ')} (ID)</p>
-          )}
-        </div>
+        <div className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-neutral-700">제목</label>
+                <Input value={editedTitle} onChange={(e) => setEditedTitle(e.target.value)} className="text-lg font-semibold" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-neutral-700">설명</label>
+                <TextArea value={editedDescription} onChange={(e) => setEditedDescription(e.target.value)} rows={4} />
+            </div>
 
-        <div>
-          <h4 className="text-md font-semibold text-neutral-700 mb-2 border-t pt-3">댓글</h4>
-          <div className="space-y-2 max-h-40 overflow-y-auto mb-3 bg-neutral-50 p-2 rounded">
-            {card.comments && card.comments.length > 0 ? (
-              card.comments.map(comment => (
-                <div key={comment.id} className="text-xs p-1.5 bg-white rounded shadow-sm">
-                  <p className="text-neutral-800">{comment.text}</p>
-                  <p className="text-neutral-500 mt-0.5">- {comment.userName} ({new Date(comment.createdAt).toLocaleString()})</p>
+            <div className="grid grid-cols-2 gap-x-4">
+                <div>
+                    <label className="block text-xs font-semibold text-neutral-600 mb-1">마감일</label>
+                    <div onClick={(e) => handleOpenPopover(e, 'dueDate')} className="flex items-center space-x-2 cursor-pointer p-1 rounded-md hover:bg-neutral-100 transition-colors">
+                        <CalendarDaysIcon className="w-5 h-5 text-neutral-500" />
+                        <span className={`text-sm ${editedDueDate ? 'text-neutral-800' : 'text-neutral-500'}`}>
+                            {editedDueDate ? new Date(editedDueDate).toLocaleDateString() : '날짜 선택'}
+                        </span>
+                    </div>
                 </div>
-              ))
-            ) : (
-              <p className="text-xs text-neutral-500 italic">댓글이 없습니다.</p>
-            )}
-          </div>
-          <div className="flex items-start space-x-2">
-            <TextArea 
-              value={newComment} 
-              onChange={(e) => setNewComment(e.target.value)} 
-              placeholder="댓글을 입력하세요..." 
-              rows={2} 
-              className="flex-grow"
-            />
-            <Button onClick={handleAddComment} size="sm" variant="outline" className="h-full">댓글 추가</Button>
-          </div>
+                <div>
+                    <label className="block text-xs font-semibold text-neutral-600 mb-1">담당자</label>
+                    <div onClick={(e) => handleOpenPopover(e, 'assignees')} className="flex items-center space-x-1 cursor-pointer p-1 rounded-md hover:bg-neutral-100 min-h-[28px]">
+                        {editedAssigneeIds.length > 0 ? (
+                            <div className="flex space-x-1">
+                                {teamMembers
+                                    .filter(m => editedAssigneeIds.includes(m.id))
+                                    .slice(0, 4) // Show max 4 avatars
+                                    .map(member => (
+                                        <div key={member.id} className="relative group">
+                                            <img
+                                                className="inline-block h-6 w-6 rounded-full ring-2 ring-white"
+                                                src={member.profileImage || `https://picsum.photos/seed/${member.id}/24/24`}
+                                                alt={member.name}
+                                            />
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-neutral-800 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                                {member.name}
+                                            </div>
+                                        </div>
+                                    ))
+                                }
+                                {editedAssigneeIds.length > 4 && (
+                                    <div className="flex items-center justify-center h-6 w-6 rounded-full ring-2 ring-white bg-neutral-200 text-xs font-semibold text-neutral-600">
+                                        +{editedAssigneeIds.length - 4}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <span className="text-neutral-500 text-sm">담당자 선택</span>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="text-sm">
+                <p><span className="font-medium">상태:</span> {columnTitle}</p>
+            </div>
+
+            <div>
+                <h4 className="text-md font-semibold text-neutral-700 mb-2 border-t pt-3">댓글</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto mb-3 bg-neutral-50 p-2 rounded">
+                    {card.comments && card.comments.length > 0 ? (
+                        card.comments.map(comment => (
+                            <div key={comment.id} className="text-xs p-1.5 bg-white rounded shadow-sm">
+                                <p className="text-neutral-800">{comment.text}</p>
+                                <p className="text-neutral-500 mt-0.5">- {comment.userName} ({new Date(comment.createdAt).toLocaleString()})</p>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-xs text-neutral-500 italic">댓글이 없습니다.</p>
+                    )}
+                </div>
+                <div className="flex items-start space-x-2">
+                    <TextArea 
+                        value={newComment} 
+                        onChange={(e) => setNewComment(e.target.value)} 
+                        placeholder="댓글을 입력하세요..." 
+                        rows={2} 
+                        className="flex-grow"
+                    />
+                    <Button onClick={handleAddComment} size="sm" variant="outline" className="h-full">댓글 추가</Button>
+                </div>
+            </div>
         </div>
-      </div>
+        {activePopover && (
+            <>
+                {/* Backdrop */}
+                <div className="fixed inset-0 z-40" onClick={handleClosePopover}></div>
+                {/* Popover Content */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: popoverAnchorEl ? popoverAnchorEl.getBoundingClientRect().bottom + window.scrollY + 5 : 0,
+                        left: popoverAnchorEl ? popoverAnchorEl.getBoundingClientRect().left + window.scrollX : 0,
+                    }}
+                    className="z-50 bg-white border border-neutral-200 rounded-md shadow-xl"
+                >
+                    {activePopover === 'dueDate' && (
+                        <div className="p-2">
+                            <Input
+                                type="date"
+                                value={editedDueDate}
+                                onChange={(e) => {
+                                    setEditedDueDate(e.target.value);
+                                    handleClosePopover(); // 날짜 선택 시 바로 닫기
+                                }}
+                                className="block w-full"
+                            />
+                        </div>
+                    )}
+                    {activePopover === 'assignees' && (
+                        <div className="w-64">
+                            <div className="p-3 border-b">
+                                <h4 className="font-semibold text-sm text-neutral-800">담당자 변경</h4>
+                            </div>
+                            <div className="max-h-56 overflow-y-auto">
+                                {teamMembers.map(member => (
+                                    <div
+                                        key={member.id}
+                                        onClick={() => handleAssigneeSelectionInModal(member.id)}
+                                        className={`px-3 py-2 cursor-pointer flex justify-between items-center hover:bg-neutral-100 transition-colors duration-150 ${
+                                            editedAssigneeIds.includes(member.id) ? 'bg-primary-light/30' : ''
+                                        }`}
+                                    >
+                                        <div>
+                                            <span className="font-medium text-sm text-neutral-800">{member.name}</span>
+                                            <span className="text-xs text-neutral-500 ml-2">({member.email})</span>
+                                        </div>
+                                        {editedAssigneeIds.includes(member.id) && (
+                                            <CheckCircleIcon className="w-5 h-5 text-primary" />
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                             <div className="p-2 bg-neutral-50 border-t">
+                                <Button onClick={handleClosePopover} size="sm" className="w-full">닫기</Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </>
+        )}
     </Modal>
   );
 };
 
-const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User }> = ({ teamProjectId, currentUser }) => {
+const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User, team: TeamProject | null }> = ({ teamProjectId, currentUser, team }) => {
     const [board, setBoard] = useState<KanbanBoard | null>(null);
     const [selectedCard, setSelectedCard] = useState<KanbanCardType | null>(null);
     const [isCardDetailModalOpen, setIsCardDetailModalOpen] = useState(false);
     const [selectedCardColumnTitle, setSelectedCardColumnTitle] = useState('');
+    
+    // 새 태스크 추가를 위한 상태
+    const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
+    const [newTaskTitle, setNewTaskTitle] = useState('');
+    const [newTaskDescription, setNewTaskDescription] = useState('');
+    const [newDueDate, setNewDueDate] = useState<string>('');
+    const [newAssigneeIds, setNewAssigneeIds] = useState<string[]>([]);
+    const [targetColumnId, setTargetColumnId] = useState<string | null>(null);
 
+    // 새 리스트 추가를 위한 상태
+    const [isCreatingList, setIsCreatingList] = useState(false);
+    const [newListName, setNewListName] = useState('');
+
+    const loadKanbanBoard = useCallback(async () => {
+        try {
+            const kanbanBoardData = await fetchKanbanBoard(teamProjectId);
+            setBoard(kanbanBoardData);
+        } catch (error) {
+            console.error('칸반 보드 데이터를 불러오는 데 실패했습니다:', error);
+            setBoard({ id: `kanban-${teamProjectId}`, teamProjectId, columns: [] });
+        }
+    }, [teamProjectId]);
 
     useEffect(() => {
-        // TODO: 실제 API 연동 (현재는 목업 데이터 사용)
-        // const loadKanbanBoard = async () => {
-        //     try {
-        //         const kanbanBoard = await fetchKanbanBoard(teamProjectId);
-        //         setBoard(kanbanBoard);
-        //     } catch (error) {
-        //         console.error('Failed to load kanban board:', error);
-        //     }
-        // };
-        // loadKanbanBoard();
+        if (teamProjectId) {
+            loadKanbanBoard();
+        }
+    }, [teamProjectId, loadKanbanBoard]);
 
-        // 임시 목업 데이터 (API 연동 후 제거 예정)
-        const demoCards: KanbanCardType[] = [
-            {id: 'card1', title: '로그인 페이지 디자인', description: '사용자 인증 UI 구현', columnId: 'col1', order: 0, assigneeIds: [currentUser.id], dueDate: new Date(Date.now() + 2 * 86400000)},
-            {id: 'card2', title: 'API 문서 작성', description: 'REST API 명세서 작성', columnId: 'col2', order: 0, assigneeIds: [currentUser.id], dueDate: new Date(Date.now() + 5 * 86400000)},
-            {id: 'card3', columnId: 'col3', title: '1차 QA 완료', description: '회원가입 및 로그인 플로우 QA 완료.', order: 0, isApproved: true},
-        ];
-        setBoard({
-            id: `kanban-${teamProjectId}`,
-            teamProjectId,
-            columns: [
-                {id: 'col1', boardId: `kanban-${teamProjectId}`, title: 'To Do', cards: demoCards.filter(c => c.columnId === 'col1'), order: 0},
-                {id: 'col2', boardId: `kanban-${teamProjectId}`, title: 'In Progress', cards: demoCards.filter(c => c.columnId === 'col2'), order: 1},
-                {id: 'col3', boardId: `kanban-${teamProjectId}`, title: 'Done', cards: demoCards.filter(c => c.columnId === 'col3'), order: 2},
-            ]
-        });
-    }, [teamProjectId]);
+    const handleOpenCreateTaskModal = (columnId: string) => {
+        setTargetColumnId(columnId);
+        setIsCreateTaskModalOpen(true);
+    };
+
+    // 담당자 선택 핸들러
+    const handleAssigneeSelection = (memberId: string) => {
+        setNewAssigneeIds(prev =>
+            prev.includes(memberId)
+                ? prev.filter(id => id !== memberId)
+                : [...prev, memberId]
+        );
+    };
+
+    const handleCreateTask = async () => {
+        if (!newTaskTitle.trim() || !targetColumnId) return;
+
+        try {
+            await createKanbanTask({
+                subject: newTaskTitle,
+                content: newTaskDescription,
+                kanbanListId: targetColumnId,
+                deadline: newDueDate ? new Date(newDueDate) : undefined,
+                assigneeIds: newAssigneeIds,
+            });
+            // 성공적으로 생성 후 보드 데이터 다시 로드
+            await loadKanbanBoard();
+            // 모달 닫고 상태 초기화
+            setIsCreateTaskModalOpen(false);
+            setNewTaskTitle('');
+            setNewTaskDescription('');
+            setNewDueDate('');
+            setNewAssigneeIds([]);
+            setTargetColumnId(null);
+        } catch (error) {
+            console.error("태스크 생성에 실패했습니다:", error);
+            // 사용자에게 에러 알림 (예: alert 또는 토스트 메시지)
+            alert("태스크 생성에 실패했습니다. 다시 시도해주세요.");
+        }
+    };
+
+    const handleCreateList = async () => {
+        if (!newListName.trim() || !board) return;
+
+        try {
+            await createKanbanList(board.id, { kanbanListName: newListName });
+            await loadKanbanBoard();
+            setNewListName('');
+            setIsCreatingList(false);
+        } catch (error) {
+            console.error("리스트 생성에 실패했습니다:", error);
+            alert("리스트 생성에 실패했습니다. 다시 시도해주세요.");
+        }
+    };
 
     const handleCardClick = (card: KanbanCardType, columnTitle: string) => {
         setSelectedCard(card);
@@ -486,75 +670,83 @@ const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User }> = 
         setSelectedCardColumnTitle('');
     };
     
-    const handleUpdateCard = (updatedCard: KanbanCardType) => {
-        setBoard(prevBoard => {
-            if (!prevBoard) return null;
-            return {
-                ...prevBoard,
-                columns: prevBoard.columns.map(col => ({
-                    ...col,
-                    cards: col.cards.map(card => card.id === updatedCard.id ? updatedCard : card)
-                }))
-            };
-        });
-        setSelectedCard(updatedCard); 
+    const handleUpdateCard = async (updatedCard: KanbanCardType) => {
+        try {
+            await updateKanbanTask(updatedCard.id, {
+                subject: updatedCard.title,
+                content: updatedCard.description,
+                deadline: updatedCard.dueDate,
+                assigneeIds: updatedCard.assigneeIds
+            });
+            // 성공적으로 업데이트 후 보드 데이터 다시 로드
+            await loadKanbanBoard();
+            // 모달 내의 카드 정보도 업데이트
+            setSelectedCard(updatedCard); 
+        } catch (error) {
+            console.error("태스크 업데이트에 실패했습니다:", error);
+            alert("태스크 업데이트에 실패했습니다.");
+        }
     };
 
-    const handleAddCommentToCard = (cardId: string, commentText: string) => {
-        const newComment: KanbanComment = {
-            id: `comment-${Date.now()}`,
-            cardId,
-            userId: currentUser.id,
-            userName: currentUser.name || 'Current User',
-            text: commentText,
-            createdAt: new Date()
-        };
-        setBoard(prevBoard => {
-            if (!prevBoard) return null;
-            const newColumns = prevBoard.columns.map(col => ({
-                ...col,
-                cards: col.cards.map(card => {
-                    if (card.id === cardId) {
-                        return { ...card, comments: [...(card.comments || []), newComment] };
-                    }
-                    return card;
-                })
-            }));
-            const updatedCardFromState = newColumns.flatMap(col => col.cards).find(c => c.id === cardId);
-            if (updatedCardFromState) setSelectedCard(updatedCardFromState); 
-            return { ...prevBoard, columns: newColumns };
-        });
+    const handleAddCommentToCard = async (cardId: string, commentText: string) => {
+        if (!commentText.trim()) return;
+        try {
+            const newComment = await addKanbanTaskComment(cardId, commentText);
+            
+            // UI 즉시 업데이트
+            const optimisticUpdate = (prevBoard: KanbanBoard | null) => {
+                if (!prevBoard) return null;
+                const newColumns = prevBoard.columns.map(col => ({
+                    ...col,
+                    cards: col.cards.map(card => {
+                        if (card.id === cardId) {
+                            return { ...card, comments: [...(card.comments || []), newComment] };
+                        }
+                        return card;
+                    })
+                }));
+                const updatedCardFromState = newColumns.flatMap(col => col.cards).find(c => c.id === cardId);
+                if (updatedCardFromState) setSelectedCard(updatedCardFromState);
+                return { ...prevBoard, columns: newColumns };
+            };
+            setBoard(optimisticUpdate);
+
+        } catch (error) {
+            console.error("댓글 추가에 실패했습니다:", error);
+            alert("댓글 추가에 실패했습니다.");
+            // 실패 시 원래 데이터로 롤백 (필요 시)
+            // await loadKanbanBoard(); 
+        }
     };
     
-    const handleApproveCard = (cardId: string) => {
-         setBoard(prevBoard => {
-            if (!prevBoard) return null;
-            const newColumns = prevBoard.columns.map(col => ({
-                ...col,
-                cards: col.cards.map(card => {
-                    if (card.id === cardId) {
-                        return { ...card, isApproved: true };
-                    }
-                    return card;
-                })
-            }));
-            const updatedCardFromState = newColumns.flatMap(col => col.cards).find(c => c.id === cardId);
-            if (updatedCardFromState) setSelectedCard(updatedCardFromState); 
-            return { ...prevBoard, columns: newColumns };
-        });
+    const handleApproveCard = async (cardId: string) => {
+        try {
+            await updateKanbanTask(cardId, { isApproved: true });
+            await loadKanbanBoard();
+        } catch(error) {
+            console.error("태스크 승인에 실패했습니다:", error);
+            alert("태스크 승인에 실패했습니다.");
+        }
     };
 
 
     if (!board) return <Card title="📊 칸반 보드"><p>로딩 중...</p></Card>;
 
     return (
-        <Card title="📊 칸반 보드" actions={<Button size="sm" leftIcon={<PlusCircleIcon/>}>새 작업 추가</Button>}>
+        <Card title="📊 칸반 보드" actions={
+            <Button size="sm" onClick={() => setIsCreatingList(true)} leftIcon={<PlusCircleIcon/>}>새 리스트 등록</Button>
+        }>
             <div className="flex space-x-4 overflow-x-auto p-2 bg-neutral-50 rounded min-h-[500px]">
                 {board.columns.sort((a,b) => a.order - b.order).map(column => (
                     <div key={column.id} className="w-80 bg-neutral-100 p-3 rounded-lg shadow-sm flex-shrink-0">
-                        <h3 className="font-semibold text-neutral-700 mb-3 px-1">{column.title} ({column.cards.length})</h3>
+                        <div className="flex justify-between items-center mb-3 px-1">
+                            <h3 className="font-semibold text-neutral-700">{column.title} ({column.cards.length})</h3>
+                            <Button size="sm" variant="ghost" onClick={() => handleOpenCreateTaskModal(column.id)} aria-label="새 작업 추가">
+                                <PlusCircleIcon className="w-5 h-5 text-neutral-500 hover:text-primary"/>
+                            </Button>
+                        </div>
                         <div className="space-y-3 min-h-[450px]">
-                            {column.cards.map(card => (
+                            {column.cards.sort((a,b) => a.order - b.order).map(card => (
                                 <div 
                                     key={card.id} 
                                     className="bg-white p-3 rounded-md shadow border border-neutral-200 hover:shadow-lg hover:border-primary-light transition-all cursor-pointer group"
@@ -562,19 +754,22 @@ const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User }> = 
                                 >
                                     <h4 className="font-medium text-sm text-neutral-800 group-hover:text-primary">{card.title}</h4>
                                     {card.description && <p className="text-xs text-neutral-600 mt-1 truncate group-hover:whitespace-normal">{card.description}</p>}
-                                    {card.dueDate && <p className={`text-xs mt-1.5 ${new Date(card.dueDate) < new Date() && column.id !== 'col3' ? 'text-red-600 font-medium' : 'text-neutral-500'}`}>마감: {new Date(card.dueDate).toLocaleDateString()}</p>}
+                                    {card.dueDate && <p className={`text-xs mt-1.5 ${new Date(card.dueDate) < new Date() && !card.isApproved ? 'text-red-600 font-medium' : 'text-neutral-500'}`}>마감: {new Date(card.dueDate).toLocaleDateString()}</p>}
                                     
                                     <div className="mt-2 pt-2 border-t border-neutral-100 flex justify-between items-center">
                                         <div className="flex -space-x-1 overflow-hidden">
-                                            {card.assigneeIds && card.assigneeIds.slice(0,3).map(assigneeId => ( 
-                                                <img key={assigneeId} className="inline-block h-5 w-5 rounded-full ring-1 ring-white" src={`https://picsum.photos/seed/${assigneeId}/20/20`} alt={`Assignee ${assigneeId}`} title={assigneeId} />
-                                            ))}
+                                            {card.assigneeIds && team && card.assigneeIds.slice(0,3).map(assigneeId => {
+                                                const member = team.members.find(m => m.id === assigneeId);
+                                                return member ? (
+                                                    <img key={assigneeId} className="inline-block h-5 w-5 rounded-full ring-1 ring-white" src={member.profileImage || `https://picsum.photos/seed/${assigneeId}/20/20`} alt={member.name} title={member.name} />
+                                                ) : null;
+                                            })}
                                             {card.assigneeIds && card.assigneeIds.length > 3 && <span className="text-xs text-neutral-400 self-center pl-1">+{card.assigneeIds.length - 3}</span> }
                                         </div>
                                         <div className="flex items-center space-x-2">
                                             {card.comments && card.comments.length > 0 && 
                                                 <span className="text-xs text-neutral-500 flex items-center"><ChatBubbleBottomCenterTextIcon className="w-3.5 h-3.5 mr-0.5"/>{card.comments.length}</span>}
-                                            {card.isApproved && column.id === 'col3' && <CheckCircleIcon className="w-4 h-4 text-green-500" title="승인 완료"/>}
+                                            {card.isApproved && <CheckCircleIcon className="w-4 h-4 text-green-500" title="승인 완료"/>}
                                         </div>
                                     </div>
                                 </div>
@@ -583,6 +778,21 @@ const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User }> = 
                         </div>
                     </div>
                 ))}
+                {isCreatingList && (
+                    <div className="w-80 bg-neutral-200 p-3 rounded-lg shadow-sm flex-shrink-0 h-fit">
+                        <Input
+                            placeholder="새 리스트 이름..."
+                            value={newListName}
+                            onChange={(e) => setNewListName(e.target.value)}
+                            autoFocus
+                            className="mb-2"
+                        />
+                        <div className="flex justify-end space-x-2">
+                            <Button size="sm" variant="ghost" onClick={() => setIsCreatingList(false)}>취소</Button>
+                            <Button size="sm" onClick={handleCreateList}>추가</Button>
+                        </div>
+                    </div>
+                )}
             </div>
             {selectedCard && (
                 <KanbanCardDetailModal
@@ -594,8 +804,67 @@ const TeamKanbanBoard: React.FC<{ teamProjectId: string, currentUser: User }> = 
                     onAddComment={handleAddCommentToCard}
                     onApproveCard={handleApproveCard}
                     currentUser={currentUser}
+                    teamMembers={team?.members || []}
                 />
             )}
+
+            {/* 새 태스크 추가 모달 */}
+            <Modal
+                isOpen={isCreateTaskModalOpen}
+                onClose={() => setIsCreateTaskModalOpen(false)}
+                title="새 작업 추가"
+                footer={
+                    <div className="flex justify-end space-x-2">
+                        <Button variant="ghost" onClick={() => setIsCreateTaskModalOpen(false)}>취소</Button>
+                        <Button onClick={handleCreateTask}>추가</Button>
+                    </div>
+                }
+            >
+                <div className="space-y-4">
+                    <Input
+                        label="작업 제목"
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                        placeholder="새 작업의 제목을 입력하세요"
+                        autoFocus
+                    />
+                    <TextArea
+                        label="설명 (선택)"
+                        value={newTaskDescription}
+                        onChange={(e) => setNewTaskDescription(e.target.value)}
+                        placeholder="작업에 대한 설명을 입력하세요"
+                        rows={4}
+                    />
+                    <Input
+                        label="마감일 (선택)"
+                        type="date"
+                        value={newDueDate}
+                        onChange={(e) => setNewDueDate(e.target.value)}
+                    />
+                    <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-1">담당자 (선택)</label>
+                        <div className="block w-full border border-neutral-300 rounded-md shadow-sm sm:text-sm h-24 overflow-y-auto">
+                            {team?.members.map(member => (
+                                <div
+                                    key={member.id}
+                                    onClick={() => handleAssigneeSelection(member.id)}
+                                    className={`px-3 py-2 cursor-pointer flex justify-between items-center hover:bg-neutral-100 transition-colors duration-150 ${
+                                        newAssigneeIds.includes(member.id) ? 'bg-primary-light/50' : ''
+                                    }`}
+                                >
+                                    <div>
+                                        <span className="font-medium text-neutral-800">{member.name}</span>
+                                        <span className="text-sm text-neutral-500 ml-2">({member.email})</span>
+                                    </div>
+                                    {newAssigneeIds.includes(member.id) && (
+                                        <CheckCircleIcon className="w-5 h-5 text-primary" />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </Modal>
         </Card>
     );
 };
@@ -1070,7 +1339,7 @@ export const TeamSpacePage: React.FC = () => {
       //    contentToRender = <TeamVideoConference teamMembers={team.members} currentUser={currentUser} />; 
       //    break;
       case 'calendar': contentToRender = <TeamCalendar teamProjectId={team.id} />; break;
-      case 'kanban': contentToRender = <TeamKanbanBoard teamProjectId={team.id} currentUser={currentUser} />; break;
+      case 'kanban': contentToRender = <TeamKanbanBoard teamProjectId={team.id} currentUser={currentUser} team={team} />; break;
       case 'bulletin': contentToRender = <TeamBulletinBoard teamProjectId={team.id} currentUser={currentUser} />; break;
       default: contentToRender = <p>선택된 기능이 없습니다.</p>;
   }

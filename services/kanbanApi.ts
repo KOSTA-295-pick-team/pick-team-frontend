@@ -1,14 +1,22 @@
 import { KanbanBoard, KanbanCard, KanbanColumn, KanbanComment } from '../types';
+import { tokenManager } from './api';
 
 const API_BASE_URL = '/api/kanban';
+
+// 인증 토큰을 포함한 헤더를 생성하는 헬퍼 함수
+const getAuthHeaders = () => {
+  const token = tokenManager.getAccessToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
+};
 
 // 칸반 보드 조회
 export const fetchKanbanBoard = async (teamId: string): Promise<KanbanBoard> => {
   const response = await fetch(`${API_BASE_URL}/team/${teamId}`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     credentials: 'include',
   });
 
@@ -58,6 +66,36 @@ export const fetchKanbanBoard = async (teamId: string): Promise<KanbanBoard> => 
   };
 };
 
+// 새 칸반 리스트(열) 생성
+export const createKanbanList = async (kanbanId: string, listData: {
+  kanbanListName: string;
+}): Promise<KanbanColumn> => {
+  const response = await fetch(`${API_BASE_URL}/${kanbanId}/lists`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    credentials: 'include',
+    body: JSON.stringify(listData),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ detail: 'Failed to create kanban list' }));
+    console.error('Error response:', errorBody);
+    throw new Error(errorBody.detail || 'Failed to create kanban list');
+  }
+
+  const result = await response.json();
+  const list = result.data;
+
+  // 백엔드 응답을 프론트엔드 타입에 맞게 변환
+  return {
+    id: list.id.toString(),
+    boardId: list.kanbanId.toString(),
+    title: list.kanbanListName,
+    order: list.order,
+    cards: [], // 새 리스트에는 카드가 없음
+  };
+};
+
 // 새 태스크 생성
 export const createKanbanTask = async (taskData: {
   subject: string;
@@ -68,9 +106,7 @@ export const createKanbanTask = async (taskData: {
 }): Promise<KanbanCard> => {
   const response = await fetch(`${API_BASE_URL}/tasks`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     credentials: 'include',
     body: JSON.stringify({
       subject: taskData.subject,
@@ -113,9 +149,7 @@ export const updateKanbanTask = async (taskId: string, taskData: {
 }): Promise<KanbanCard> => {
   const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     credentials: 'include',
     body: JSON.stringify({
       subject: taskData.subject,
@@ -159,9 +193,7 @@ export const updateKanbanTask = async (taskId: string, taskData: {
 export const addKanbanTaskComment = async (taskId: string, comment: string): Promise<KanbanComment> => {
   const response = await fetch(`${API_BASE_URL}/tasks/${taskId}/comments`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     credentials: 'include',
     body: JSON.stringify({
       comment: comment,
@@ -189,9 +221,7 @@ export const addKanbanTaskComment = async (taskId: string, comment: string): Pro
 export const deleteKanbanTask = async (taskId: string): Promise<void> => {
   const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
     method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(),
     credentials: 'include',
   });
 
