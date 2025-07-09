@@ -21,6 +21,11 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState(""); // 로컬 에러 (워크스페이스 참여 실패 등)
   const [loading, setLoading] = useState(false);
+
+  // Caps Lock 상태 관리
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+  const [showCapsLockWarning, setShowCapsLockWarning] = useState(false);
+
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,6 +89,22 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  // Caps Lock 감지 함수
+  const detectCapsLock = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const capsLockOn = e.getModifierState("CapsLock");
+    setIsCapsLockOn(capsLockOn);
+  };
+
+  // 비밀번호 필드 포커스 시 Caps Lock 경고 표시
+  const handlePasswordFocus = () => {
+    setShowCapsLockWarning(true);
+  };
+
+  // 비밀번호 필드 블러 시 Caps Lock 경고 숨김
+  const handlePasswordBlur = () => {
+    setShowCapsLockWarning(false);
+  };
+
   // OAuth 로그인 핸들러
   const handleOAuthLogin = (provider: "google" | "kakao") => {
     try {
@@ -134,16 +155,41 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="test1@example.com"
             />
-            <Input
-              label="비밀번호"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="password"
-            />
+            <div className="relative">
+              <Input
+                label="비밀번호"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={detectCapsLock}
+                onFocus={handlePasswordFocus}
+                onBlur={handlePasswordBlur}
+                placeholder="password"
+              />
+
+              {/* Caps Lock 경고 물방울 */}
+              {showCapsLockWarning && isCapsLockOn && (
+                <div className="absolute top-12 right-3 z-10">
+                  <div className="relative">
+                    <div className="bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 shadow-lg">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                        <span className="text-sm text-amber-800 font-medium">
+                          Caps Lock이 켜져 있습니다
+                        </span>
+                      </div>
+                    </div>
+                    {/* 말풍선 꼬리 */}
+                    <div className="absolute top-0 right-4 transform -translate-y-1">
+                      <div className="w-3 h-3 bg-amber-100 border-l border-t border-amber-300 rotate-45"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             {displayError && (
               <p className="text-sm text-red-500">{displayError}</p>
             )}
@@ -220,6 +266,10 @@ export const SignupPage: React.FC = () => {
   const [isCodeSent, setIsCodeSent] = useState(false); // 인증코드 발송 여부
   const [isEmailVerified, setIsEmailVerified] = useState(false); // 이메일 인증 완료 여부
 
+  // Caps Lock 상태 관리
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+  const [showCapsLockWarning, setShowCapsLockWarning] = useState(false);
+
   // 로딩 상태들
   const [loading, setLoading] = useState({
     passwordValidation: false,
@@ -259,6 +309,22 @@ export const SignupPage: React.FC = () => {
 
   // 디바운싱을 위한 타이머 ref
   const passwordValidationTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Caps Lock 감지 함수
+  const detectCapsLock = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const capsLockOn = e.getModifierState("CapsLock");
+    setIsCapsLockOn(capsLockOn);
+  };
+
+  // 비밀번호 필드 포커스 시 Caps Lock 경고 표시
+  const handlePasswordFocus = () => {
+    setShowCapsLockWarning(true);
+  };
+
+  // 비밀번호 필드 블러 시 Caps Lock 경고 숨김
+  const handlePasswordBlur = () => {
+    setShowCapsLockWarning(false);
+  };
 
   // 비밀번호 변경 핸들러 (디바운싱 적용)
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -440,7 +506,7 @@ export const SignupPage: React.FC = () => {
               disabled={isCodeSent} // 인증코드 발송 후에는 이메일 변경 불가
             />
 
-            <div>
+            <div className="relative">
               <Input
                 label="비밀번호"
                 name="password"
@@ -448,9 +514,33 @@ export const SignupPage: React.FC = () => {
                 required
                 value={password}
                 onChange={handlePasswordChange}
+                onKeyDown={detectCapsLock}
+                onFocus={handlePasswordFocus}
+                onBlur={handlePasswordBlur}
                 placeholder="8자 이상, 대소문자, 숫자 포함"
                 disabled={isCodeSent} // 인증코드 발송 후에는 비밀번호 변경 불가
               />
+
+              {/* Caps Lock 경고 물방울 */}
+              {showCapsLockWarning && isCapsLockOn && (
+                <div className="absolute top-12 right-3 z-10">
+                  <div className="relative">
+                    <div className="bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 shadow-lg">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                        <span className="text-sm text-amber-800 font-medium">
+                          Caps Lock이 켜져 있습니다
+                        </span>
+                      </div>
+                    </div>
+                    {/* 말풍선 꼬리 */}
+                    <div className="absolute top-0 right-4 transform -translate-y-1">
+                      <div className="w-3 h-3 bg-amber-100 border-l border-t border-amber-300 rotate-45"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {passwordValidation && (
                 <p
                   className={`text-xs mt-1 ${
@@ -466,7 +556,7 @@ export const SignupPage: React.FC = () => {
               )}
             </div>
 
-            <div>
+            <div className="relative">
               <Input
                 label="비밀번호 확인"
                 name="confirmPassword"
@@ -474,9 +564,32 @@ export const SignupPage: React.FC = () => {
                 required
                 value={confirmPassword}
                 onChange={handleConfirmPasswordChange}
+                onKeyDown={detectCapsLock}
+                onFocus={handlePasswordFocus}
+                onBlur={handlePasswordBlur}
                 placeholder="비밀번호를 다시 입력해주세요"
                 disabled={isCodeSent} // 인증코드 발송 후에는 비밀번호 확인 변경 불가
               />
+
+              {/* Caps Lock 경고 물방울 (비밀번호 확인용) */}
+              {showCapsLockWarning && isCapsLockOn && (
+                <div className="absolute top-12 right-3 z-10">
+                  <div className="relative">
+                    <div className="bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 shadow-lg">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                        <span className="text-sm text-amber-800 font-medium">
+                          Caps Lock이 켜져 있습니다
+                        </span>
+                      </div>
+                    </div>
+                    {/* 말풍선 꼬리 */}
+                    <div className="absolute top-0 right-4 transform -translate-y-1">
+                      <div className="w-3 h-3 bg-amber-100 border-l border-t border-amber-300 rotate-45"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {confirmPassword && (
                 <p
                   className={`text-xs mt-1 ${
