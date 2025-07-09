@@ -332,10 +332,24 @@ export const userControllerApi = {
     );
 
     if (response.success && response.data) {
+      // 백엔드 응답 구조에 맞게 토큰 추출
+      const accessToken =
+        (response.data as any).token || response.data.accessToken;
+      const refreshToken = response.data.refreshToken;
+
       // 토큰 저장
-      tokenManager.setAccessToken(response.data.accessToken);
-      tokenManager.setRefreshToken(response.data.refreshToken);
-      return response.data;
+      if (accessToken) {
+        tokenManager.setAccessToken(accessToken);
+      }
+      if (refreshToken) {
+        tokenManager.setRefreshToken(refreshToken);
+      }
+
+      // LoginResponse 타입에 맞게 반환
+      return {
+        ...response.data,
+        accessToken: accessToken,
+      } as LoginResponse;
     }
 
     throw new UserApiError(400, response.message || "로그인에 실패했습니다.");
@@ -356,14 +370,47 @@ export const userControllerApi = {
       }
     );
 
-    if (response.success && response.data) {
-      // 토큰 저장
-      console.log("[DEBUG] 로그인 응답에서 토큰 저장 시작");
-      console.log("[DEBUG] accessToken 존재:", !!response.data.accessToken);
-      console.log("[DEBUG] refreshToken 존재:", !!response.data.refreshToken);
+    console.log("[DEBUG] 로그인 원본 응답:", {
+      success: response.success,
+      message: response.message,
+      data: response.data,
+      dataKeys: response.data ? Object.keys(response.data) : [],
+      fullResponse: JSON.stringify(response, null, 2),
+    });
 
-      tokenManager.setAccessToken(response.data.accessToken);
-      tokenManager.setRefreshToken(response.data.refreshToken);
+    if (response.success && response.data) {
+      // 백엔드 응답 구조에 맞게 토큰 추출 (유연하게 처리)
+      console.log("[DEBUG] 로그인 응답에서 토큰 저장 시작");
+
+      // 백엔드가 data.token으로 보내므로 이에 맞게 수정
+      const accessToken =
+        (response.data as any).token || response.data.accessToken;
+      const refreshToken = response.data.refreshToken;
+
+      console.log("[DEBUG] token 필드 존재:", !!(response.data as any).token);
+      console.log(
+        "[DEBUG] accessToken 필드 존재:",
+        !!response.data.accessToken
+      );
+      console.log("[DEBUG] refreshToken 존재:", !!response.data.refreshToken);
+      console.log("[DEBUG] 추출된 accessToken:", accessToken);
+      console.log("[DEBUG] 추출된 refreshToken:", refreshToken);
+
+      // 토큰이 정의되어 있는지 확인
+      if (accessToken) {
+        tokenManager.setAccessToken(accessToken);
+        console.log("[DEBUG] accessToken 저장 성공");
+      } else {
+        console.error("[DEBUG] accessToken을 찾을 수 없습니다!");
+        console.log("[DEBUG] 사용 가능한 필드:", Object.keys(response.data));
+      }
+
+      if (refreshToken) {
+        tokenManager.setRefreshToken(refreshToken);
+        console.log("[DEBUG] refreshToken 저장 성공");
+      } else {
+        console.warn("[DEBUG] refreshToken을 찾을 수 없습니다!");
+      }
 
       console.log("[DEBUG] 토큰 저장 완료");
       console.log(
@@ -375,7 +422,11 @@ export const userControllerApi = {
         !!tokenManager.getRefreshToken()
       );
 
-      return response.data;
+      // LoginResponse 타입에 맞게 반환 (accessToken 필드로 변환)
+      return {
+        ...response.data,
+        accessToken: accessToken, // token -> accessToken으로 변환
+      } as LoginResponse;
     }
 
     throw new UserApiError(400, response.message || "로그인에 실패했습니다.");
