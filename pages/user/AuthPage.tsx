@@ -250,6 +250,15 @@ export const LoginPage: React.FC = () => {
               회원가입
             </Link>
           </p>
+          <p className="mt-4 text-center text-sm text-neutral-600">
+            비밀번호를 잊으셨나요?{" "}
+            <Link
+              to="/forgot-password"
+              className="font-medium text-primary hover:text-primary-dark"
+            >
+              비밀번호 찾기
+            </Link>
+          </p>
         </Card>
       </div>
     </div>
