@@ -13,6 +13,7 @@ import {
 import { AuthProvider, useAuth } from "./AuthContext";
 import { LoginPage, SignupPage } from "./pages/user/AuthPage";
 import { EmailVerificationPage } from "./pages/user/EmailVerificationPage";
+import { OAuthCallbackPage } from "./pages/user/OAuthCallbackPage";
 import {
   MyPage,
   ProfileEditPage,
@@ -526,6 +527,12 @@ function App() {
           <Route
             path="/email-verification"
             element={<EmailVerificationPage />}
+          />
+
+          {/* OAuth 콜백 라우트 */}
+          <Route
+            path="/oauth/:provider/callback"
+            element={<OAuthCallbackPage />}
           />
 
           <Route element={<ProtectedRoute />}>

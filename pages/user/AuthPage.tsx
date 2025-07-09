@@ -11,6 +11,10 @@ import {
   userControllerApi,
   UserApiError,
 } from "../../services/user-controller";
+import {
+  startOAuthLogin,
+  handleOAuthError,
+} from "../../services/user-controller/oauth";
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -77,6 +81,22 @@ export const LoginPage: React.FC = () => {
       // 여기서는 추가 처리만 수행
     } finally {
       setLoading(false);
+    }
+  };
+
+  // OAuth 로그인 핸들러
+  const handleOAuthLogin = (provider: "google" | "kakao") => {
+    try {
+      // 초대 코드가 있으면 임시 저장 (OAuth 완료 후 사용)
+      if (inviteCode) {
+        sessionStorage.setItem("pendingInviteCode", inviteCode);
+      }
+
+      // OAuth 로그인 시작
+      startOAuthLogin(provider);
+    } catch (error) {
+      const errorMessage = handleOAuthError(error as Error, provider);
+      setLocalError(errorMessage);
     }
   };
 
@@ -147,7 +167,12 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <Button variant="outline" className="w-full">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuthLogin("google")}
+                type="button"
+              >
                 <img
                   src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
                   alt="Google"
@@ -157,13 +182,15 @@ export const LoginPage: React.FC = () => {
               </Button>
               <Button
                 variant="outline"
-                className="w-full bg-[#FEE500] hover:bg-[#FEE500]/90 border-[#FEE500]"
+                className="w-full bg-[#FEE500] hover:bg-[#FEE500]/90 border-[#FEE500] text-black"
+                onClick={() => handleOAuthLogin("kakao")}
+                type="button"
               >
                 <img
-                  src="https://developers.kakao.com/tool/resource/static/img/button/symbol/kakaotalk_symbol.png"
+                  src="https://developers.kakao.com/assets/img/about/logos/kakaotalksharing/kakaotalk_sharing_btn_medium.png"
                   alt="Kakao"
                   className="w-5 h-5 mr-2"
-                />{" "}
+                />
                 Kakao 로그인
               </Button>
             </div>
@@ -382,6 +409,17 @@ export const SignupPage: React.FC = () => {
     await registerUser();
   };
 
+  // OAuth 로그인 핸들러 (회원가입용)
+  const handleOAuthSignup = (provider: "google" | "kakao") => {
+    try {
+      // OAuth 회원가입 시작
+      startOAuthLogin(provider);
+    } catch (error) {
+      const errorMessage = handleOAuthError(error as Error, provider);
+      setError(errorMessage);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -543,7 +581,12 @@ export const SignupPage: React.FC = () => {
               </div>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <Button variant="outline" className="w-full">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuthSignup("google")}
+                type="button"
+              >
                 <img
                   src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
                   alt="Google"
@@ -553,13 +596,13 @@ export const SignupPage: React.FC = () => {
               </Button>
               <Button
                 variant="outline"
-                className="w-full bg-[#FEE500] hover:bg-[#FEE500]/90 border-[#FEE500]"
+                className="w-full bg-[#FEE500] hover:bg-[#FEE500]/90 border-[#FEE500] text-black"
+                onClick={() => handleOAuthSignup("kakao")}
+                type="button"
               >
-                <img
-                  src="https://developers.kakao.com/tool/resource/static/img/button/symbol/kakaotalk_symbol.png"
-                  alt="Kakao"
-                  className="w-5 h-5 mr-2"
-                />{" "}
+                <div className="w-5 h-5 mr-2 rounded-full bg-[#3C1E1E] flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">K</span>
+                </div>
                 Kakao로 가입
               </Button>
             </div>
