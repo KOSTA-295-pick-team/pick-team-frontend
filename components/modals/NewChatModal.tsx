@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import { Modal, Button, Input } from '../ui';
 import { ItemListSelector } from '../complex';
 import { User as UserType } from '../../types';
 import { useAuth } from '../../AuthContext';
-import * as chatApi from '../../services/chatApi';
-import { workspaceApi } from '../../services/api';
+
+import { apiRequest } from '../../services/api';
+import { createGroupChatRoomThunk, createDmChatRoomThunk } from '../../store/slices/chatSlice';
+import type { AppDispatch } from '../../store';
 
 interface NewChatModalProps {
     isOpen: boolean;
@@ -14,6 +17,7 @@ interface NewChatModalProps {
 
 const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) => {
     const { currentUser, currentWorkspace, setCurrentChatRoomById } = useAuth();
+    const dispatch = useDispatch<AppDispatch>();
     const navigate = useNavigate();
     const [chatType, setChatType] = useState<'dm' | 'group'>('dm');
     const [groupName, setGroupName] = useState('');
@@ -30,9 +34,13 @@ const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) => {
             try {
                 setLoading(true);
                 setError(null);
-                const members = await workspaceApi.getMembers(currentWorkspace.id);
-                // 현재 사용자를 제외한 멤버 목록 설정
-                setAvailableUsers(members.filter((user: UserType) => user.id !== currentUser.id));
+                const response = await apiRequest<{success: boolean; message: string; data: UserType[]}>(`/workspaces/${currentWorkspace.id}/members`);
+                if (response.success && response.data) {
+                    // 현재 사용자를 제외한 멤버 목록 설정
+                    setAvailableUsers(response.data.filter(user => user.id !== currentUser.id));
+                } else {
+                    throw new Error(response.message || '멤버 목록을 불러오는데 실패했습니다.');
+                }
             } catch (error: any) {
                 console.error('워크스페이스 멤버 목록 로딩 실패:', error);
                 setError('멤버 목록을 불러오는데 실패했습니다.');
@@ -69,56 +77,56 @@ const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) => {
         </div>
     );
 
-    const handleCreate = async () => {
-        if (!currentUser || !currentWorkspace) {
-            setError("사용자 또는 워크스페이스 정보를 찾을 수 없습니다.");
-            return;
-        }
-
-        // 입력 값 검증
-        if (chatType === 'dm') {
-            if (selectedUsers.length !== 1) {
-                setError("DM을 시작할 사용자 1명을 선택해주세요.");
-                return;
-            }
-        } else { // group
-            if (groupName.trim() === '') {
-                setError("그룹 채팅방 이름을 입력해주세요.");
-                return;
-            }
-            if (selectedUsers.length === 0) {
-                setError("그룹 멤버를 1명 이상 선택해주세요.");
-                return;
-            }
-        }
-
-        setLoading(true);
-        setError(null);
+    const handleCreateChatRoom = async () => {
+        if (!currentWorkspace?.id || !currentUser) return;
 
         try {
-            // 선택된 사용자 ID 목록 생성 (현재 사용자 포함)
-            const memberIds = [currentUser.id, ...selectedUsers.map(u => u.id)];
+            setLoading(true);
+            setError(null);
 
             let newRoom;
+            const memberIds = selectedUsers.map(user => user.id);
+
             if (chatType === 'dm') {
-                // DM 채팅방 생성
-                newRoom = await chatApi.createDmChatRoom(currentWorkspace.id, memberIds);
+                if (memberIds.length !== 1) {
+                    setError('DM 채팅방은 한 명의 상대만 선택할 수 있습니다.');
+                    return;
+                }
+
+                // DM 채팅방 생성 (상대방 이름을 채팅방 이름으로 사용)
+                const otherUser = selectedUsers[0];
+                newRoom = await dispatch(createDmChatRoomThunk({
+                    workspaceId: currentWorkspace.id,
+                    otherUserId: otherUser.id,
+                    otherUserName: otherUser.name || '알 수 없는 사용자'
+                })).unwrap();
             } else {
+                if (!groupName.trim()) {
+                    setError('그룹 채팅방 이름을 입력해주세요.');
+                    return;
+                }
+                if (memberIds.length === 0) {
+                    setError('채팅방에 초대할 멤버를 선택해주세요.');
+                    return;
+                }
+
                 // 그룹 채팅방 생성
-                newRoom = await chatApi.createChatRoom(currentWorkspace.id, groupName, memberIds);
+                newRoom = await dispatch(createGroupChatRoomThunk({
+                    workspaceId: currentWorkspace.id,
+                    name: groupName.trim(),
+                    memberIds
+                })).unwrap();
             }
 
-            // 채팅방 생성 성공
-            setCurrentChatRoomById(newRoom.id);
-            navigate(`/ws/${currentWorkspace.id}/chat/${newRoom.id}`);
-            onClose();
+            // 새로 생성된 채팅방으로 이동
+            if (newRoom) {
+                setCurrentChatRoomById(newRoom.id);
+                navigate(`/workspaces/${currentWorkspace.id}/chat/${newRoom.id}`);
+                onClose();
+            }
         } catch (error: any) {
             console.error('채팅방 생성 실패:', error);
-            setError(
-                error.response?.data?.message || 
-                error.message || 
-                "채팅방 생성에 실패했습니다. 이미 DM이 존재하거나 그룹 이름/멤버 조건이 맞지 않을 수 있습니다."
-            );
+            setError(error.message || '채팅방 생성에 실패했습니다.');
         } finally {
             setLoading(false);
         }
@@ -219,7 +227,7 @@ const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) => {
                     </Button>
                     <Button
                         variant="primary"
-                        onClick={handleCreate}
+                        onClick={handleCreateChatRoom}
                         disabled={loading || selectedUsers.length === 0 || (chatType === 'group' && !groupName.trim())}
                     >
                         {loading ? '생성 중...' : '채팅 시작하기'}

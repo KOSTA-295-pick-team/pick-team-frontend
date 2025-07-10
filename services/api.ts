@@ -15,6 +15,21 @@ export const tokenManager = {
   clearTokens: () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
+  isTokenExpired: (token: string): boolean => {
+    if (!token) return true;
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => 
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+      ).join(''));
+      const payload = JSON.parse(jsonPayload);
+      // 만료 10초 전에 갱신 시도
+      return (payload.exp * 1000) - 10000 < Date.now();
+    } catch {
+      return true;
+    }
   }
 };
 
@@ -26,10 +41,48 @@ class ApiError extends Error {
   }
 }
 
+let isRefreshing = false;
+let refreshPromise: Promise<LoginResponse> | null = null;
+
 // HTTP 요청 래퍼 함수
-export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(
+  endpoint: string, 
+  options: RequestInit = {},
+  retryCount = 0
+): Promise<T> {
+  if (retryCount > 1) {
+    throw new ApiError(401, '인증 처리 중 오류가 발생했습니다.');
+  }
+
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = tokenManager.getAccessToken();
+  let token = tokenManager.getAccessToken();
+
+  // 토큰이 만료되었고 현재 갱신 중이 아니면서 로그인/갱신 요청이 아닌 경우
+  if (
+    token && 
+    tokenManager.isTokenExpired(token) && 
+    !endpoint.includes('/refresh') && 
+    !endpoint.includes('/login')
+  ) {
+    try {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        refreshPromise = authApi.refreshToken();
+      }
+
+      if (refreshPromise) {
+        await refreshPromise;
+        token = tokenManager.getAccessToken();
+      }
+    } catch (error) {
+      tokenManager.clearTokens();
+      window.location.href = '/login';
+      throw new ApiError(401, '세션이 만료되었습니다. 다시 로그인해주세요.');
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  }
   
   const config: RequestInit = {
     headers: {
@@ -43,60 +96,48 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   try {
     const response = await fetch(url, config);
     
-    // 401 오류 시 토큰 갱신 시도 (로그인 API 제외)
+    // 401 오류 처리
     if (response.status === 401 && !endpoint.includes('/login') && !endpoint.includes('/refresh')) {
-      const refreshToken = tokenManager.getRefreshToken();
-      if (refreshToken) {
-        try {
+      try {
+        const refreshToken = tokenManager.getRefreshToken();
+        if (refreshToken && !tokenManager.isTokenExpired(refreshToken) && retryCount < 1) {
           await authApi.refreshToken();
-          // 새 토큰으로 다시 요청
-          const newToken = tokenManager.getAccessToken();
-          const retryConfig = {
-            ...config,
-            headers: {
-              ...config.headers,
-              'Authorization': `Bearer ${newToken}`,
-            }
-          };
-          const retryResponse = await fetch(url, retryConfig);
-          
-          if (!retryResponse.ok) {
-            const errorData = await retryResponse.text();
-            throw new ApiError(retryResponse.status, errorData || `HTTP ${retryResponse.status}`);
-          }
-
-          const contentType = retryResponse.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            return await retryResponse.json();
-          }
-          
-          return await retryResponse.text() as T;
-        } catch (refreshError) {
-          // 토큰 갱신 실패 시 로그인 페이지로 리다이렉트
-          tokenManager.clearTokens();
-          if (typeof window !== 'undefined') {
-            window.location.hash = '/login';
-          }
-          throw new ApiError(401, '인증이 만료되었습니다. 다시 로그인해주세요.');
+          // 토큰 갱신 후 한 번만 재시도
+          return apiRequest<T>(endpoint, options, retryCount + 1);
         }
-      } else {
-        // 리프레시 토큰이 없으면 로그인 페이지로
+        // 리프레시 토큰이 없거나 만료된 경우 또는 재시도 횟수 초과
         tokenManager.clearTokens();
-        if (typeof window !== 'undefined') {
-          window.location.hash = '/login';
-        }
-        throw new ApiError(401, '인증이 필요합니다. 로그인해주세요.');
+        window.location.href = '/login';
+        throw new ApiError(401, '인증이 필요합니다. 다시 로그인해주세요.');
+      } catch (error) {
+        tokenManager.clearTokens();
+        window.location.href = '/login';
+        throw error instanceof ApiError ? error : new ApiError(401, '세션이 만료되었습니다. 다시 로그인해주세요.');
       }
     }
     
     if (!response.ok) {
-      const errorData = await response.text();
-      throw new ApiError(response.status, errorData || `HTTP ${response.status}`);
+      let errorMessage = `HTTP Error ${response.status}`;
+      try {
+        const errorData = await response.text();
+        if (errorData) {
+          try {
+            const parsedError = JSON.parse(errorData);
+            errorMessage = parsedError.message || errorData;
+          } catch {
+            errorMessage = errorData;
+          }
+        }
+      } catch {
+        // 에러 메시지 파싱 실패 시 기본 메시지 사용
+      }
+      throw new ApiError(response.status, errorMessage);
     }
 
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      return await response.json();
+      const data = await response.json();
+      return data;
     }
     
     return await response.text() as T;
@@ -104,7 +145,11 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
     if (error instanceof ApiError) {
       throw error;
     }
-    throw new ApiError(0, '네트워크 연결에 실패했습니다. 서버가 실행 중인지 확인해주세요.');
+    // 네트워크 에러 처리
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.');
+    }
+    throw new ApiError(500, error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
   }
 }
 
@@ -405,4 +450,4 @@ export const userApi = {
 export { ApiError };
 
 // 다른 API 서비스들도 함께 export
-export { teamApi } from './teamApi'; 
+export { teamApi } from './teamApi';

@@ -50,6 +50,26 @@ export const sendMessageThunk = createAsyncThunk(
   }
 );
 
+export const createGroupChatRoomThunk = createAsyncThunk(
+  'chat/createGroupRoom',
+  async ({ workspaceId, name, memberIds }: { workspaceId: string; name: string; memberIds: string[] }) => {
+    const response = await chatApi.createChatRoom(workspaceId, name, memberIds);
+    return response.data;
+  }
+);
+
+export const createDmChatRoomThunk = createAsyncThunk(
+  'chat/createDmRoom',
+  async ({ workspaceId, otherUserId, otherUserName }: { 
+    workspaceId: string; 
+    otherUserId: string;
+    otherUserName: string;
+  }) => {
+    const response = await chatApi.createDmChatRoom(workspaceId, otherUserId, otherUserName);
+    return response.data;
+  }
+);
+
 // Chat Slice
 const chatSlice = createSlice({
   name: 'chat',
@@ -122,6 +142,34 @@ const chatSlice = createSlice({
           state.messages[roomId] = [];
         }
         state.messages[roomId].push(message);
+      })
+      // 채팅방 생성 (그룹)
+      .addCase(createGroupChatRoomThunk.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createGroupChatRoomThunk.fulfilled, (state, action) => {
+        state.loading = false;
+        state.rooms = [...state.rooms, action.payload];
+        state.currentRoom = action.payload;
+      })
+      .addCase(createGroupChatRoomThunk.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || '채팅방 생성 실패';
+      })
+      // 채팅방 생성 (DM)
+      .addCase(createDmChatRoomThunk.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createDmChatRoomThunk.fulfilled, (state, action) => {
+        state.loading = false;
+        state.rooms = [...state.rooms, action.payload];
+        state.currentRoom = action.payload;
+      })
+      .addCase(createDmChatRoomThunk.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'DM 채팅방 생성 실패';
       });
   },
 });

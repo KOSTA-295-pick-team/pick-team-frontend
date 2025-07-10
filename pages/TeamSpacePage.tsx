@@ -82,6 +82,17 @@ import {
   addAttachments,
 } from "../store/slices/bulletinSlice";
 
+// 달력 관련 유틸리티 함수
+const getDaysInMonth = (year: number, month: number): number => {
+  return new Date(year, month + 1, 0).getDate();
+};
+
+const getFirstDayOfMonth = (year: number, month: number): number => {
+  return new Date(year, month, 1).getDay();
+};
+
+const daysOfWeek: string[] = ["일", "월", "화", "수", "목", "금", "토"];
+
 // Sub-components for TeamSpacePage
 const TeamAnnouncementBoard: React.FC<{
   teamProjectId: string;
@@ -353,16 +364,6 @@ const TeamAnnouncementBoard: React.FC<{
     </Card>
   );
 };
-
-const getDaysInMonth = (year: number, month: number) => {
-  return new Date(year, month + 1, 0).getDate();
-};
-
-const getFirstDayOfMonth = (year: number, month: number) => {
-  return new Date(year, month, 1).getDay();
-};
-
-const daysOfWeek = ["일", "월", "화", "수", "목", "금", "토"];
 
 const TeamCalendar: React.FC<{ teamProjectId: string }> = ({
   teamProjectId,
@@ -788,284 +789,6 @@ const TeamCalendar: React.FC<{ teamProjectId: string }> = ({
         </div>
       </Modal>
     </Card>
-  );
-};
-
-interface KanbanCardDetailModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  card: KanbanCardType | null;
-  columnTitle: string;
-  onUpdateCard: (updatedCard: KanbanCardType) => void;
-  onAddComment: (cardId: string, commentText: string) => void;
-  onApproveCard: (cardId: string) => void;
-  currentUser: User;
-  teamMembers: User[];
-}
-
-const KanbanCardDetailModal: React.FC<KanbanCardDetailModalProps> = ({
-  isOpen,
-  onClose,
-  card,
-  columnTitle,
-  onUpdateCard,
-  onAddComment,
-  onApproveCard,
-  currentUser,
-  teamMembers,
-}) => {
-  const [editingCard, setEditingCard] = useState<KanbanCardType | null>(null);
-  const [newComment, setNewComment] = useState("");
-  const [activePopover, setActivePopover] = useState<"dueDate" | "assignees" | null>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (card) {
-      setEditingCard({ ...card });
-    } else {
-      setEditingCard(null);
-    }
-  }, [card]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-        handleClosePopover();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleOpenPopover = (event: React.MouseEvent<HTMLElement>, popoverType: 'dueDate' | 'assignees') => {
-    event.stopPropagation();
-    setActivePopover(popoverType);
-  };
-
-  const handleClosePopover = () => {
-    setActivePopover(null);
-  };
-
-  const handleSave = () => {
-    if (editingCard) {
-      onUpdateCard(editingCard);
-      onClose();
-    }
-  };
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    if (editingCard) {
-      setEditingCard({ ...editingCard, [e.target.name]: e.target.value });
-    }
-  };
-
-  const handleAddComment = () => {
-    if (newComment.trim() && card) {
-      onAddComment(card.id, newComment.trim());
-      setNewComment("");
-    }
-  };
-
-  const handleAssigneeSelectionInModal = (memberId: string) => {
-    if (editingCard) {
-        const currentAssignees = editingCard.assignees || [];
-        const isAssigned = currentAssignees.some(a => a.id === memberId);
-        
-        let updatedAssignees;
-        if (isAssigned) {
-            updatedAssignees = currentAssignees.filter(a => a.id !== memberId);
-        } else {
-            const memberToAdd = teamMembers.find(m => m.id === memberId);
-            if(memberToAdd) {
-              updatedAssignees = [...currentAssignees, memberToAdd];
-            } else {
-              updatedAssignees = currentAssignees;
-            }
-        }
-        setEditingCard({ ...editingCard, assignees: updatedAssignees });
-    }
-  };
-
-  if (!isOpen || !card || !editingCard) return null;
-
-  const getAssigneeDetails = (assigneeIds: string[] | undefined) => {
-    if (!assigneeIds) return [];
-    return assigneeIds
-      .map((id) => teamMembers.find((m) => m.id === id))
-      .filter((m): m is User => !!m);
-  };
-
-  const currentAssignees = editingCard.assignees || [];
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={
-        <div className="flex items-center">
-          <ClipboardDocumentListIcon className="w-6 h-6 mr-2 text-primary" />
-          <span className="text-xl font-semibold text-neutral-800">
-            {editingCard.title}
-          </span>
-        </div>
-      }
-      size="2xl"
-      footer={
-        <div className="flex justify-between items-center w-full">
-          <div>
-            <Button
-              onClick={() => onApproveCard(card.id)}
-              disabled={card.approved}
-              leftIcon={
-                <CheckCircleIcon
-                  className={`w-5 h-5 ${
-                    card.approved ? "text-green-500" : "text-neutral-500"
-                  }`}
-                />
-              }
-            >
-              {card.approved ? "승인 완료" : "업무 승인"}
-            </Button>
-          </div>
-          <div className="flex space-x-2">
-            <Button variant="outline" onClick={onClose}>
-              닫기
-            </Button>
-            <Button onClick={handleSave}>저장</Button>
-          </div>
-        </div>
-      }
-    >
-      <div className="grid grid-cols-3 gap-6">
-        {/* Main content */}
-        <div className="col-span-2 space-y-4">
-          <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-neutral-600 mb-1"
-            >
-              설명
-            </label>
-            <TextArea
-              id="description"
-              name="description"
-              value={editingCard.description || ""}
-              onChange={handleChange}
-              placeholder="업무에 대한 설명을 추가하세요..."
-              rows={5}
-            />
-          </div>
-
-          <div>
-            <h3 className="text-lg font-semibold text-neutral-800 mb-2">
-              댓글
-            </h3>
-            <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
-              {card.comments?.map((comment) => (
-                <div key={comment.id} className="flex items-start space-x-2">
-                  <div className="w-8 h-8 rounded-full bg-neutral-200 flex items-center justify-center text-sm font-bold text-neutral-600">
-                    {comment.author.name.charAt(0)}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">
-                      <span className="font-semibold">{comment.author.name}</span>
-                      <span className="text-xs text-neutral-500 ml-2">
-                        {new Date(comment.timestamp).toLocaleString()}
-                      </span>
-                    </p>
-                    <p className="text-neutral-700 text-sm bg-neutral-100 p-2 rounded-md">
-                      {comment.text}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 flex">
-              <Input
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="댓글을 추가하세요..."
-                className="flex-grow"
-              />
-              <Button onClick={handleAddComment} className="ml-2">
-                추가
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="col-span-1 space-y-4">
-          <div className="bg-neutral-50 p-3 rounded-lg">
-            <p className="text-xs text-neutral-500">현재 상태</p>
-            <p className="font-semibold text-neutral-800">{columnTitle}</p>
-          </div>
-
-          <div className="relative">
-            <h4 className="text-sm font-medium text-neutral-600 mb-1">담당자</h4>
-            <div className="flex flex-wrap gap-1">
-              {currentAssignees.length > 0 ? (
-                currentAssignees.map(assignee => (
-                    <div key={assignee.id} className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full flex items-center">
-                        {assignee.name}
-                    </div>
-                ))
-              ) : (
-                <p className="text-sm text-neutral-500">없음</p>
-              )}
-            </div>
-            <Button size="sm" variant="outline" className="w-full mt-2" onClick={(e) => handleOpenPopover(e, 'assignees')}>
-                담당자 변경
-            </Button>
-
-            {activePopover === 'assignees' && (
-              <div ref={popoverRef} className="absolute z-20 w-56 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg">
-                <div className="p-2 font-semibold text-center border-b">팀원 목록</div>
-                <ul className="py-1 max-h-48 overflow-y-auto">
-                    {teamMembers.map(member => (
-                        <li key={member.id}
-                            className="px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-100 cursor-pointer flex items-center justify-between"
-                            onClick={() => handleAssigneeSelectionInModal(member.id)}>
-                            {member.name}
-                            {currentAssignees.some(a => a.id === member.id) && <CheckCircleIcon className="w-5 h-5 text-primary"/>}
-                        </li>
-                    ))}
-                </ul>
-                <div className="p-2 border-t text-right">
-                    <Button size="sm" onClick={handleClosePopover}>닫기</Button>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <div className="relative">
-             <h4 className="text-sm font-medium text-neutral-600 mb-1">마감일</h4>
-             <Button size="sm" variant="outline" className="w-full text-left justify-start" onClick={(e) => handleOpenPopover(e, 'dueDate')}>
-                {editingCard.dueDate ? new Date(editingCard.dueDate).toLocaleDateString() : '날짜 선택'}
-             </Button>
-             
-            {activePopover === 'dueDate' && (
-              <div ref={popoverRef} className="absolute z-10 w-full mt-1 bg-white border border-neutral-200 rounded-md shadow-lg p-2">
-                <Input
-                    type="date"
-                    value={editingCard.dueDate ? editingCard.dueDate.split('T')[0] : ''}
-                    onChange={(e) => {
-                      if (editingCard) {
-                        setEditingCard({ ...editingCard, dueDate: e.target.value });
-                      }
-                    }}
-                />
-                 <div className="mt-2 text-right">
-                    <Button size="sm" onClick={handleClosePopover}>설정</Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </Modal>
   );
 };
 
@@ -1999,18 +1722,6 @@ const BulletinPostDetailModal: React.FC<BulletinPostDetailModalProps> = ({
     }
   };
 
-  const handleAttachmentDownload = async (
-    fileUrl: string,
-    fileName: string
-  ) => {
-    try {
-      await bulletinApi.downloadAttachment(fileUrl, fileName);
-    } catch (error) {
-      console.error("첨부파일 다운로드 실패:", error);
-      alert("첨부파일 다운로드에 실패했습니다.");
-    }
-  };
-
   return (
     <Modal
       isOpen={isOpen}
@@ -2139,7 +1850,7 @@ const BulletinPostDetailModal: React.FC<BulletinPostDetailModalProps> = ({
               <Input
                 type="file"
                 multiple
-                className="text-sm"
+                className="w-full text-sm"
                 onChange={handleEditFileChange}
                 accept="*/*"
               />
@@ -2739,42 +2450,62 @@ const TeamBulletinBoard: React.FC<{
 };
 
 export const TeamSpacePage: React.FC = () => {
-  const { workspaceId, teamProjectId } = useParams<{
-    workspaceId: string;
-    teamProjectId: string;
-  }>();
-  const { currentUser, setCurrentTeamProject } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const dispatch = useAppDispatch();
-
-  const [team, setTeam] = useState<TeamProject | null>(null);
+  const { workspaceId } = useParams(); // URL 파라미터에서 workspaceId 가져오기
+  const [workspace, setWorkspace] = useState<any>(null);
+  const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>("");
-  const [password, setPassword] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [isAuthenticatedForTeam, setIsAuthenticatedForTeam] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // 팀 설정 관련 상태
-  const [showTeamSettingsDropdown, setShowTeamSettingsDropdown] =
-    useState(false);
-  const [showLeaveTeamModal, setShowLeaveTeamModal] = useState(false);
-  const [showDeleteTeamModal, setShowDeleteTeamModal] = useState(false);
-  const [teamActionLoading, setTeamActionLoading] = useState(false);
+  // 워크스페이스 정보 로딩
+  useEffect(() => {
+    const loadWorkspace = async () => {
+      if (!workspaceId) return;
+      
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await workspaceApi.getById(workspaceId);
+        setWorkspace(data);
+      } catch (err) {
+        console.error('워크스페이스 로딩 실패:', err);
+        setError('워크스페이스 정보를 불러오는데 실패했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [isInviting, setIsInviting] = useState(false);
+    loadWorkspace();
+  }, [workspaceId]);
 
+  // 로딩 중 표시
+  if (loading) {
+    return <div>로딩 중...</div>;
+  }
+
+  // 에러 표시
+  if (error) {
+    return <div>에러: {error}</div>;
+  }
+
+  // 워크스페이스가 없는 경우
+  if (!workspace) {
+    return <div>워크스페이스를 찾을 수 없습니다.</div>;
+  }
+
+  // 기존의 TABS 정의 등에서 workspace 사용
   const TABS = useMemo(
     () => [
-      { id: "announcements", label: "공지사항", icon: <ChatBubbleBottomCenterTextIcon className="w-5 h-5" />, component: <TeamAnnouncementBoard teamProjectId={teamProjectId as string} /> },
-      { id: "calendar", label: "캘린더", icon: <CalendarDaysIcon className="w-5 h-5" />, component: <TeamCalendar teamProjectId={teamProjectId as string} /> },
-      { id: "kanban", label: "칸반보드", icon: <TableCellsIcon className="w-5 h-5" />, component: <TeamKanbanBoard teamProjectId={teamProjectId as string} currentUser={currentUser as User} team={team} /> },
-      { id: "bulletin", label: "게시판", icon: <ClipboardDocumentListIcon className="w-5 h-5" />, component: <TeamBulletinBoard teamProjectId={teamProjectId as string} currentUser={currentUser as User} /> },
+      { 
+        id: "announcements", 
+        label: "공지사항", 
+        icon: <ChatBubbleBottomCenterTextIcon className="w-5 h-5" />, 
+        component: <TeamAnnouncementBoard teamProjectId={workspaceId as string} /> 
+      },
+      { id: "calendar", label: "캘린더", icon: <CalendarDaysIcon className="w-5 h-5" />, component: <TeamCalendar teamProjectId={workspaceId as string} /> },
+      { id: "kanban", label: "칸반보드", icon: <TableCellsIcon className="w-5 h-5" />, component: <TeamKanbanBoard teamProjectId={workspaceId as string} currentUser={currentUser as User} team={team} /> },
+      { id: "bulletin", label: "게시판", icon: <ClipboardDocumentListIcon className="w-5 h-5" />, component: <TeamBulletinBoard teamProjectId={workspaceId as string} currentUser={currentUser as User} /> },
     ],
-    [teamProjectId, currentUser, team]
+    [workspaceId, currentUser, workspace]
   );
   
   type TeamSpaceActiveTabType = (typeof TABS)[number]["id"];
@@ -2882,15 +2613,8 @@ export const TeamSpacePage: React.FC = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        !isSidebarOpen &&
-        sidebarRef.current &&
-        !sidebarRef.current.contains(event.target as Node)
-      ) {
-        const toggleButton = document.getElementById("sidebar-toggle");
-        if (toggleButton && toggleButton.contains(event.target as Node)) {
-          return;
-        }
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+        setSidebarOpen(false);
       }
     };
 
@@ -2898,164 +2622,108 @@ export const TeamSpacePage: React.FC = () => {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isSidebarOpen]);
-
-  // Render logic
-  if (loading)
-    return (
-      <div className="flex justify-center items-center h-full">
-        <p>팀 스페이스 정보를 불러오는 중...</p>
-      </div>
-    );
-  if (error)
-    return (
-      <div className="flex justify-center items-center h-full">
-        <p className="text-red-500">오류: {error}</p>
-      </div>
-    );
-  if (!team)
-    return (
-      <div className="flex justify-center items-center h-full">
-        <p>팀을 찾을 수 없습니다.</p>
-      </div>
-    );
-
-  if (needsPassword) {
-    return (
-      <div className="flex justify-center items-center h-screen bg-neutral-100">
-        <Card title="비밀번호 입력" className="w-full max-w-md">
-          <p className="mb-4 text-neutral-600">
-            이 팀 스페이스에 접근하려면 비밀번호가 필요합니다.
-          </p>
-          <div className="space-y-4">
-            <Input
-              type="password"
-              label="팀 비밀번호"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
-            />
-            <Button onClick={handlePasswordSubmit} className="w-full">
-              입장
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+  }, [sidebarRef]);
 
   return (
-    <div className="flex h-screen bg-neutral-50">
-      {/* Sidebar */}
-      <div
-        ref={sidebarRef}
-        className={`bg-white border-r border-neutral-200 flex flex-col transition-all duration-300 ${
-          isSidebarOpen ? "w-64" : "w-0 overflow-hidden"
-        }`}
-      >
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-bold truncate" title={team.name}>
-            {team.name}
-          </h2>
-          <p className="text-sm text-neutral-500 truncate" title={team.description}>
-            {team.description}
-          </p>
-        </div>
-        <nav className="flex-grow p-2 space-y-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === tab.id
-                  ? "bg-primary-light text-primary"
-                  : "text-neutral-600 hover:bg-neutral-100"
-              }`}
-            >
-              {tab.icon}
-              <span className="ml-3">{tab.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="p-2 border-t">
-            <div className="p-2">
-                <h3 className="font-semibold text-sm mb-2 px-1">팀원 ({team.members.length})</h3>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {team.members.map(member => (
-                        <div key={member.id} className="flex items-center space-x-2 px-1">
-                            <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-bold">
-                                {member.name.charAt(0)}
-                            </div>
-                            <span className="text-sm text-neutral-700">{member.name}</span>
-                        </div>
-                    ))}
-                </div>
-                 <Button 
-                    variant="outline" size="sm" 
-                    className="w-full mt-2"
-                    onClick={() => setShowInviteModal(true)} 
-                    leftIcon={<UserIcon className="w-4 h-4" />}>
-                    팀원 초대하기
-                </Button>
-            </div>
-          <button className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md text-neutral-600 hover:bg-neutral-100">
-            <CogIcon className="w-5 h-5" />
-            <span className="ml-3">팀 설정</span>
-          </button>
-          <button
-            onClick={() => navigate(`/workspace/${currentWorkspace?.id}`)}
-            className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md text-neutral-600 hover:bg-neutral-100"
-          >
-            <ArrowRightOnRectangleIcon className="w-5 h-5" />
-            <span className="ml-3">워크스페이스로 돌아가기</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <header className="bg-white border-b border-neutral-200 flex items-center p-2">
-          <Button
-            id="sidebar-toggle"
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            className="mr-2"
-          >
-            <Bars3Icon className="w-6 h-6" />
-          </Button>
-          <h1 className="text-xl font-semibold">
-            {TABS.find((t) => t.id === activeTab)?.label}
-          </h1>
-        </header>
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
-          {TABS.find((t) => t.id === activeTab)?.component}
-        </main>
-      </div>
-
-       {/* Invite Member Modal */}
-        <Modal
-            isOpen={showInviteModal}
-            onClose={() => setShowInviteModal(false)}
-            title="팀에 멤버 초대"
-            footer={
-                <div className="flex justify-end space-x-2">
-                    <Button variant="ghost" onClick={() => setShowInviteModal(false)}>취소</Button>
-                    <Button onClick={handleInvite} disabled={isInviting}>
-                        {isInviting ? "초대 중..." : "초대 보내기"}
-                    </Button>
-                </div>
-            }
+    <div className="flex flex-col h-screen">
+      {/* Sidebar for mobile */}
+      <div className="md:hidden">
+        <Button
+          variant="primary"
+          onClick={toggleSidebar}
+          className="w-full rounded-none"
         >
-            <Input
-                type="email"
-                label="이메일 주소"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="초대할 사람의 이메일을 입력하세요"
-                autoFocus
-            />
-        </Modal>
+          메뉴 열기
+        </Button>
+      </div>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div
+          ref={sidebarRef}
+          className={`hidden md:flex flex-col w-64 bg-white border-r transition-transform duration-300 ${
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-4">
+              <h2 className="text-lg font-semibold text-neutral-800">
+                {workspace.name}
+              </h2>
+              <p className="text-sm text-neutral-500">
+                {workspace.description}
+              </p>
+            </div>
+            <nav className="mt-4">
+              <ul className="space-y-2">
+                {TABS.map((tab) => (
+                  <li key={tab.id}>
+                    <Button
+                      variant={activeTab === tab.id ? "primary" : "ghost"}
+                      onClick={() => setActiveTab(tab.id)}
+                      className="w-full justify-start"
+                      leftIcon={tab.icon}
+                    >
+                      {tab.label}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
+          <div className="p-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowInviteModal(true);
+                setInviteEmail("");
+              }}
+              className="w-full"
+            >
+              팀원 초대하기
+            </Button>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 p-4 overflow-y-auto">
+          {/* Active tab content */}
+          {TABS.find((tab) => tab.id === activeTab)?.component}
+        </div>
+      </div>
+
+      {/* Invite modal */}
+      <Modal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        title="팀원 초대"
+        footer={
+          <div className="flex justify-end space-x-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowInviteModal(false)}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleInvite}
+              isLoading={isInviting}
+            >
+              초대하기
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="초대할 이메일"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="이메일을 입력하세요"
+            type="email"
+            required
+          />
+        </div>
+      </Modal>
     </div>
   );
 };
