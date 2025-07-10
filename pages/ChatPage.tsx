@@ -1,105 +1,122 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { useAuth } from '../AuthContext';
-import { ChatMessage as ChatMessageType, User as UserType } from '../types';
+import { ChatMessage as ChatMessageType, ChatRoomMember } from '../types';
 import { Card, Input, Button, TextArea } from '../components';
 import { PaperClipIcon, ArrowUpCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
-
-// Chat messages - in a real app, fetch from backend or context based on roomId
-const ALL_CHAT_MESSAGES: ChatMessageType[] = [
-    // DM with user_kim
-    { id: 'dm_msg1_a', roomId: 'chat_dm_user_kim', userId:'user_kim', userName:'김코딩', text: '안녕하세요! DM입니다. 잘 지내시죠?', timestamp: new Date(Date.now() - 3600000) },
-    { id: 'dm_msg1_b', roomId: 'chat_dm_user_kim', userId:'user@example.com', userName:'테스트 사용자', text: '네, 안녕하세요! 잘 지냅니다. 프로젝트는 어떻게 돼가나요?', timestamp: new Date(Date.now() - 3540000) },
-
-    // Group chat: general
-    { id: 'grp_msg1_a', roomId: 'chat_group_general', userId:'user_park', userName:'박해커', text: '새로운 기능 아이디어 공유합니다: 실시간 공동 편집 기능!', timestamp: new Date(Date.now() - 7200000) },
-    { id: 'grp_msg1_b', roomId: 'chat_group_general', userId:'user@example.com', userName:'테스트 사용자', text: '오, 좋은 아이디어네요. 기술 스택 검토가 필요하겠어요.', timestamp: new Date(Date.now() - 7140000) },
-    { id: 'grp_msg1_c', roomId: 'chat_group_general', userId:'user_kim', userName:'김코딩', text: 'WebSockets나 CRDTs 같은 걸 고려해볼 수 있겠네요.', timestamp: new Date(Date.now() - 7080000) },
-
-    // Group chat: 알파 프로젝트 논의
-    { id: 'alpha_msg_1', roomId: 'chat_group_project_alpha_discussion', userId:'user_kim', userName:'김코딩', text: '알파 프로젝트 다음 주 목표 설정 회의 언제 할까요?', timestamp: new Date(Date.now() - 86400000*2) },
-    { id: 'alpha_msg_2', roomId: 'chat_group_project_alpha_discussion', userId:'user_park', userName:'박해커', text: '저는 수요일 오후가 괜찮습니다.', timestamp: new Date(Date.now() - 86400000*2 + 60000) },
-    { id: 'alpha_msg_3', roomId: 'chat_group_project_alpha_discussion', userId:'user@example.com', userName:'테스트 사용자', text: '저도 수요일 오후 좋습니다. 그때 뵙죠!', timestamp: new Date(Date.now() - 86400000*2 + 120000) },
-];
-
+import { 
+  fetchMessagesThunk, 
+  sendMessageThunk, 
+  setCurrentRoom,
+  clearUnreadCount 
+} from '../store/slices/chatSlice';
+import { AppDispatch, RootState } from '../store';
+import { chatEvents } from '../services/chatEvents';
 
 export const ChatPage: React.FC = () => {
   const { workspaceId, roomId } = useParams<{ workspaceId: string, roomId: string }>();
-  const { currentUser, currentChatRoom, setCurrentChatRoomById, getChatRoomName } = useAuth();
+  const { currentUser, getChatRoomName } = useAuth();
   const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
 
-  const [messages, setMessages] = useState<ChatMessageType[]>([]);
+  // Redux 상태 조회
+  const currentRoom = useSelector((state: RootState) => state.chat.currentRoom);
+  const messages = useSelector((state: RootState) => 
+    state.chat.messages[roomId || ''] || []
+  );
+  const loading = useSelector((state: RootState) => state.chat.loading);
+  const error = useSelector((state: RootState) => state.chat.error);
+
   const [newMessage, setNewMessage] = useState('');
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 채팅방 입장 시 필요한 작업들
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || !workspaceId || !roomId) {
       navigate('/login');
       return;
     }
-    if (roomId) {
-      setCurrentChatRoomById(roomId);
-        // Filter messages for the current room
-  const roomMessages = ALL_CHAT_MESSAGES.filter(msg => msg.roomId === roomId);
-      setMessages(roomMessages.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
-    } else {
-        // If no roomId, perhaps navigate to a default view or show an error
-        if(workspaceId) navigate(`/ws/${workspaceId}`);
-        else navigate('/');
-    }
-    return () => {
-        // setCurrentChatRoomById(null); // Optionally clear when navigating away
+
+    // 현재 채팅방 설정
+    dispatch(setCurrentRoom({ id: roomId }));
+    // 메시지 목록 로딩
+    dispatch(fetchMessagesThunk({ workspaceId, roomId }));
+    // 읽지 않은 메시지 카운트 초기화
+    dispatch(clearUnreadCount(roomId));
+    
+    // SSE 연결 및 이벤트 핸들러 설정
+    chatEvents.connect(currentUser.id);
+    chatEvents.subscribeToRoom(roomId);
+
+    // 채팅방 입장/퇴장 이벤트 처리
+    const onMemberJoined = (data: { chatRoomId: string, member: ChatRoomMember }) => {
+      if (data.chatRoomId === roomId) {
+        console.log(`${data.member.name}님이 입장했습니다.`);
+        // TODO: 시스템 메시지 표시 또는 알림 기능 추가
+      }
     };
-  }, [roomId, currentUser, setCurrentChatRoomById, navigate, workspaceId]);
+    
+    const onMemberLeft = (data: { chatRoomId: string, memberId: string }) => {
+      if (data.chatRoomId === roomId) {
+        console.log(`사용자가 퇴장했습니다. (ID: ${data.memberId})`);
+        // TODO: 시스템 메시지 표시 또는 알림 기능 추가
+      }
+    };
+
+    chatEvents.onMemberJoined(onMemberJoined);
+    chatEvents.onMemberLeft(onMemberLeft);
+
+    return () => {
+      chatEvents.unsubscribeFromRoom(roomId);
+      chatEvents.disconnect(); // 페이지 이탈 시 연결 해제
+    };
+  }, [roomId, workspaceId, currentUser, dispatch, navigate]);
   
+  // 새 메시지 수신 시 스크롤
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-
-  const handleSendMessage = useCallback(() => {
-    if (!currentUser || !currentChatRoom) return;
+  // 메시지 전송 처리
+  const handleSendMessage = useCallback(async () => {
+    if (!currentUser || !workspaceId || !roomId) return;
+    
     if (newMessage.trim() || attachedFile) {
-      const msg: ChatMessageType = {
-        id: `msg-${Date.now()}`,
-        roomId: currentChatRoom.id,
-        userId: currentUser.id,
-        userName: currentUser.name || '나',
-        text: newMessage.trim(),
-        timestamp: new Date(),
-      };
-      if (attachedFile) {
-        msg.attachment = {
-            fileName: attachedFile.name,
-            fileUrl: URL.createObjectURL(attachedFile), 
-            type: attachedFile.type.startsWith('image/') ? 'image' : 'file',
-        };
+      try {
+        await dispatch(sendMessageThunk({
+          workspaceId,
+          roomId,
+          text: newMessage.trim(),
+          file: attachedFile || undefined
+        })).unwrap();
+
+        setNewMessage('');
+        setAttachedFile(null);
+        if(fileInputRef.current) fileInputRef.current.value = '';
+      } catch (error) {
+        console.error('메시지 전송 실패:', error);
       }
-          // Add to ALL_CHAT_MESSAGES for persistence
-    ALL_CHAT_MESSAGES.push(msg); 
-      setMessages(prev => [...prev, msg]);
-      setNewMessage('');
-      setAttachedFile(null);
-      if(fileInputRef.current) fileInputRef.current.value = ""; 
     }
-  }, [newMessage, attachedFile, currentUser, currentChatRoom]);
+  }, [newMessage, attachedFile, currentUser, workspaceId, roomId, dispatch]);
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-        setAttachedFile(event.target.files[0]);
+      setAttachedFile(event.target.files[0]);
     }
   };
   
-  if (!currentUser) return <p>로그인이 필요합니다.</p>; // Should be handled by ProtectedRoute
-  if (!currentChatRoom) return <div className="p-4 text-center">채팅방을 불러오는 중이거나 선택된 채팅방이 없습니다...</div>;
+  if (!currentUser) return <p>로그인이 필요합니다.</p>;
+  if (loading) return <div className="p-4 text-center">채팅 내용을 불러오는 중...</div>;
+  if (error) return <div className="p-4 text-center text-red-500">오류 발생: {error}</div>;
+  if (!currentRoom) return <div className="p-4 text-center">선택된 채팅방이 없습니다.</div>;
 
-  const chatRoomDisplayName = getChatRoomName(currentChatRoom, currentUser);
+  const chatRoomDisplayName = currentRoom ? getChatRoomName(currentRoom, currentUser) : '';
 
   return (
-    <Card title={`대화: ${chatRoomDisplayName}`} className="flex flex-col h-[calc(100vh-8rem-4rem)]"> {/* Adjust height as needed */}
+    <Card title={`대화: ${chatRoomDisplayName}`} className="flex flex-col h-[calc(100vh-8rem-4rem)]">
       <div className="flex-grow space-y-3 overflow-y-auto mb-3 pr-2 p-2 border border-neutral-200 rounded-md bg-neutral-50 scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-neutral-100">
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.userId === currentUser.id ? 'justify-end' : 'justify-start'}`}>

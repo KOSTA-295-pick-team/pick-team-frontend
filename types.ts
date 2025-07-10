@@ -23,6 +23,7 @@ export interface User {
 
   currentWorkspaceId?: string;
   currentTeamProjectId?: string;
+  token?: string; // 인증 토큰
 }
 
 export interface Workspace {
