@@ -5,42 +5,20 @@ const REFRESH_TOKEN_KEY = "refresh_token";
 export const tokenManager = {
   getAccessToken: () => {
     const token = localStorage.getItem(TOKEN_KEY);
-    console.log("[DEBUG tokenManager] getAccessToken:", {
-      hasToken: !!token,
-      tokenLength: token ? token.length : 0,
-      tokenStart: token ? token.substring(0, 20) + "..." : "null",
-    });
     return token;
   },
   setAccessToken: (token: string) => {
-    console.log("[DEBUG tokenManager] setAccessToken:", {
-      hasToken: !!token,
-      tokenLength: token ? token.length : 0,
-      tokenStart: token ? token.substring(0, 20) + "..." : "null",
-      tokenType: typeof token,
-    });
     if (!token || token === "undefined" || token === "null") {
-      console.error("[DEBUG tokenManager] 잘못된 accessToken 저장 시도!");
       return;
     }
     localStorage.setItem(TOKEN_KEY, token);
   },
   getRefreshToken: () => {
     const token = localStorage.getItem(REFRESH_TOKEN_KEY);
-    console.log("[DEBUG tokenManager] getRefreshToken:", {
-      hasToken: !!token,
-      tokenLength: token ? token.length : 0,
-    });
     return token;
   },
   setRefreshToken: (token: string) => {
-    console.log("[DEBUG tokenManager] setRefreshToken:", {
-      hasToken: !!token,
-      tokenLength: token ? token.length : 0,
-      tokenType: typeof token,
-    });
     if (!token || token === "undefined" || token === "null") {
-      console.warn("[DEBUG tokenManager] 잘못된 refreshToken 저장 시도!");
       return;
     }
     localStorage.setItem(REFRESH_TOKEN_KEY, token);

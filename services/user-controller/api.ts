@@ -898,12 +898,6 @@ export const userControllerApi = {
 
   // 새 비밀번호 설정
   resetPassword: async (data: ResetPasswordRequest): Promise<void> => {
-    console.log("[DEBUG API] 비밀번호 재설정 시작:", {
-      email: data.email,
-      hasCode: !!data.resetCode,
-      hasPassword: !!data.newPassword,
-    });
-
     const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
       method: "POST",
       headers: {
@@ -912,11 +906,8 @@ export const userControllerApi = {
       body: JSON.stringify(data),
     });
 
-    console.log("[DEBUG API] 비밀번호 재설정 응답 상태:", response.status);
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("[DEBUG API] 비밀번호 재설정 실패:", errorData);
       throw new UserApiError(
         response.status,
         errorData.message || "비밀번호 재설정에 실패했습니다."
@@ -924,7 +915,6 @@ export const userControllerApi = {
     }
 
     const result = await response.json();
-    console.log("[DEBUG API] 비밀번호 재설정 성공:", result);
 
     if (!result.success) {
       throw new UserApiError(

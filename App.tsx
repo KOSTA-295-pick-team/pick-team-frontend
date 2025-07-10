@@ -11,17 +11,18 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
-import { LoginPage, SignupPage } from "./pages/user/AuthPage";
-import { EmailVerificationPage } from "./pages/user/EmailVerificationPage";
-import { OAuthCallbackPage } from "./pages/user/OAuthCallbackPage";
-import { OAuthSuccessPage } from "./pages/user/OAuthSuccessPage";
-import { ForgotPasswordPage } from "./pages/user/ForgotPasswordPage";
 import {
+  LoginPage,
+  SignupPage,
+  EmailVerificationPage,
+  OAuthCallbackPage,
+  OAuthSuccessPage,
+  ForgotPasswordPage,
   MyPage,
   ProfileEditPage,
   AccountSettingsPage,
-} from "./pages/user/MyPageStack";
-import { UserProfileViewPage } from "./pages/UserProfilePage";
+  UserProfileViewPage,
+} from "./pages/user";
 import {
   AutoTeamPage,
   VoteTeamPage,

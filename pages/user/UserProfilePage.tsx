@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { Card, Button } from "../components";
-import { User } from "../types";
-import { userControllerApi } from "../services/user-controller";
+import { Card, Button } from "../../components";
+import { User } from "../../types";
+import { userControllerApi } from "../../services/user-controller";
 
 export const UserProfileViewPage: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
