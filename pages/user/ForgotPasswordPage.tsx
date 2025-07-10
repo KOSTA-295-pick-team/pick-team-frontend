@@ -1,6 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Input, Card } from "../../components";
+import {
+  userControllerApi,
+  UserApiError,
+} from "../../services/user-controller/api";
 
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -13,25 +17,76 @@ export const ForgotPasswordPage: React.FC = () => {
     "email"
   );
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const navigate = useNavigate();
+
+  // 재전송 쿨다운 타이머
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => {
+        setResendCooldown(resendCooldown - 1);
+      }, 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  // 이메일 유효성 검사
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   // 1단계: 비밀번호 재설정 이메일 발송
   const handleSendResetEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    // 이메일 유효성 검사
+    if (!isValidEmail(email)) {
+      setError("올바른 이메일 주소를 입력해주세요.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // TODO: 백엔드 API 연결
-      // await authApi.sendPasswordResetEmail({ email });
-
-      // 임시로 성공 처리
-      setSuccess("비밀번호 재설정 이메일이 발송되었습니다.");
+      await userControllerApi.sendPasswordResetEmail({ email });
+      setSuccess(
+        "비밀번호 재설정 이메일이 발송되었습니다. 이메일을 확인해주세요."
+      );
       setCurrentStep("code");
+      setResendCooldown(60); // 60초 쿨다운
     } catch (err) {
-      setError("이메일 발송에 실패했습니다. 이메일 주소를 확인해주세요.");
+      if (err instanceof UserApiError) {
+        setError(err.message);
+      } else {
+        setError("이메일 발송에 실패했습니다. 이메일 주소를 확인해주세요.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 이메일 재전송
+  const handleResendEmail = async () => {
+    if (resendCooldown > 0) return;
+
+    setError("");
+    setLoading(true);
+
+    try {
+      await userControllerApi.sendPasswordResetEmail({ email });
+      setSuccess("인증 코드가 다시 발송되었습니다.");
+      setResendCooldown(60);
+    } catch (err) {
+      if (err instanceof UserApiError) {
+        setError(err.message);
+      } else {
+        setError("이메일 재전송에 실패했습니다.");
+      }
     } finally {
       setLoading(false);
     }
@@ -45,14 +100,25 @@ export const ForgotPasswordPage: React.FC = () => {
     setLoading(true);
 
     try {
-      // TODO: 백엔드 API 연결
-      // await authApi.verifyResetCode({ email, resetCode });
+      const response = await userControllerApi.verifyResetCode({
+        email,
+        resetCode,
+      });
 
-      // 임시로 성공 처리
-      setSuccess("인증 코드가 확인되었습니다.");
-      setCurrentStep("password");
+      if (response.valid) {
+        setSuccess(
+          "인증 코드가 확인되었습니다. 새로운 비밀번호를 설정해주세요."
+        );
+        setCurrentStep("password");
+      } else {
+        setError(response.message || "인증 코드가 올바르지 않습니다.");
+      }
     } catch (err) {
-      setError("인증 코드가 올바르지 않습니다.");
+      if (err instanceof UserApiError) {
+        setError(err.message);
+      } else {
+        setError("인증 코드 확인에 실패했습니다. 다시 시도해주세요.");
+      }
     } finally {
       setLoading(false);
     }
@@ -75,21 +141,42 @@ export const ForgotPasswordPage: React.FC = () => {
       return;
     }
 
+    // 비밀번호 강도 검사
+    const hasUpperCase = /[A-Z]/.test(newPassword);
+    const hasLowerCase = /[a-z]/.test(newPassword);
+    const hasNumbers = /\d/.test(newPassword);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+      setError(
+        "비밀번호는 대문자, 소문자, 숫자, 특수문자를 모두 포함해야 합니다."
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // TODO: 백엔드 API 연결
-      // await authApi.resetPassword({ email, resetCode, newPassword });
+      await userControllerApi.resetPassword({
+        email,
+        resetCode,
+        newPassword,
+      });
 
-      // 임시로 성공 처리
-      setSuccess("비밀번호가 성공적으로 재설정되었습니다.");
+      setSuccess(
+        "비밀번호가 성공적으로 재설정되었습니다. 로그인 페이지로 이동합니다."
+      );
 
       // 2초 후 로그인 페이지로 이동
       setTimeout(() => {
         navigate("/login", { state: { email } });
       }, 2000);
     } catch (err) {
-      setError("비밀번호 재설정에 실패했습니다.");
+      if (err instanceof UserApiError) {
+        setError(err.message);
+      } else {
+        setError("비밀번호 재설정에 실패했습니다. 다시 시도해주세요.");
+      }
     } finally {
       setLoading(false);
     }
@@ -97,6 +184,20 @@ export const ForgotPasswordPage: React.FC = () => {
 
   const renderEmailStep = () => (
     <Card title="비밀번호 찾기">
+      {/* 진행률 표시 */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
+          <span>단계 1/3</span>
+          <span>이메일 인증</span>
+        </div>
+        <div className="w-full bg-neutral-200 rounded-full h-2">
+          <div
+            className="bg-blue-600 h-2 rounded-full"
+            style={{ width: "33%" }}
+          ></div>
+        </div>
+      </div>
+
       <div className="mb-4">
         <p className="text-sm text-neutral-600">
           가입하신 이메일 주소를 입력해주세요. 비밀번호 재설정 링크를
@@ -131,19 +232,45 @@ export const ForgotPasswordPage: React.FC = () => {
           type="submit"
           className="w-full"
           variant="primary"
-          disabled={loading || !email}
+          disabled={loading || !email || !isValidEmail(email)}
         >
           {loading ? "이메일 발송 중..." : "재설정 이메일 발송"}
         </Button>
+
+        <div className="text-center">
+          <Link
+            to="/login"
+            className="text-sm text-neutral-600 hover:text-neutral-800"
+          >
+            로그인으로 돌아가기
+          </Link>
+        </div>
       </form>
     </Card>
   );
 
   const renderCodeStep = () => (
     <Card title="인증 코드 입력">
+      {/* 진행률 표시 */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
+          <span>단계 2/3</span>
+          <span>코드 확인</span>
+        </div>
+        <div className="w-full bg-neutral-200 rounded-full h-2">
+          <div
+            className="bg-blue-600 h-2 rounded-full"
+            style={{ width: "66%" }}
+          ></div>
+        </div>
+      </div>
+
       <div className="mb-4">
         <p className="text-sm text-neutral-600">
           <strong>{email}</strong>로 발송된 6자리 인증 코드를 입력해주세요.
+        </p>
+        <p className="text-xs text-neutral-500 mt-2">
+          이메일이 오지 않았나요? 스팸함을 확인해보세요.
         </p>
       </div>
       <form onSubmit={handleVerifyResetCode} className="space-y-6">
@@ -154,9 +281,9 @@ export const ForgotPasswordPage: React.FC = () => {
           maxLength={6}
           required
           value={resetCode}
-          onChange={(e) => setResetCode(e.target.value)}
+          onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ""))} // 숫자만 입력
           placeholder="123456"
-          className="text-center text-lg tracking-widest"
+          className="text-center text-lg tracking-widest font-mono"
         />
 
         {error && (
@@ -176,7 +303,11 @@ export const ForgotPasswordPage: React.FC = () => {
             type="button"
             className="flex-1"
             variant="outline"
-            onClick={() => setCurrentStep("email")}
+            onClick={() => {
+              setCurrentStep("email");
+              setError("");
+              setSuccess("");
+            }}
           >
             이전
           </Button>
@@ -186,19 +317,21 @@ export const ForgotPasswordPage: React.FC = () => {
             variant="primary"
             disabled={loading || resetCode.length !== 6}
           >
-            {loading ? "확인 중..." : "인증 코드 확인"}
+            {loading ? "확인 중..." : "코드 확인"}
           </Button>
         </div>
 
         <div className="text-center">
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            className="text-sm text-neutral-600 hover:text-neutral-800"
-            onClick={() => setCurrentStep("email")}
+            onClick={handleResendEmail}
+            disabled={resendCooldown > 0 || loading}
+            className="text-sm text-blue-600 hover:text-blue-800 disabled:text-neutral-400 disabled:cursor-not-allowed"
           >
-            인증 코드를 받지 못하셨나요? 다시 발송
-          </Button>
+            {resendCooldown > 0
+              ? `${resendCooldown}초 후 재전송 가능`
+              : "인증 코드 재전송"}
+          </button>
         </div>
       </form>
     </Card>
@@ -206,45 +339,54 @@ export const ForgotPasswordPage: React.FC = () => {
 
   const renderPasswordStep = () => (
     <Card title="새 비밀번호 설정">
+      {/* 진행률 표시 */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between text-xs text-neutral-500 mb-2">
+          <span>단계 3/3</span>
+          <span>비밀번호 설정</span>
+        </div>
+        <div className="w-full bg-neutral-200 rounded-full h-2">
+          <div
+            className="bg-blue-600 h-2 rounded-full"
+            style={{ width: "100%" }}
+          ></div>
+        </div>
+      </div>
+
       <div className="mb-4">
         <p className="text-sm text-neutral-600">
-          새로운 비밀번호를 설정해주세요.
+          새로운 비밀번호를 입력해주세요.
         </p>
+        <div className="mt-2 text-xs text-neutral-500">
+          <p>비밀번호 요구사항:</p>
+          <ul className="list-disc list-inside mt-1 space-y-1">
+            <li>8자 이상</li>
+            <li>대문자, 소문자, 숫자, 특수문자 포함</li>
+          </ul>
+        </div>
       </div>
       <form onSubmit={handleResetPassword} className="space-y-6">
         <Input
           label="새 비밀번호"
           name="newPassword"
           type="password"
+          autoComplete="new-password"
           required
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="8자 이상, 대소문자, 숫자 포함"
+          placeholder="새 비밀번호를 입력하세요"
         />
 
         <Input
-          label="새 비밀번호 확인"
+          label="비밀번호 확인"
           name="confirmPassword"
           type="password"
+          autoComplete="new-password"
           required
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="새 비밀번호를 다시 입력해주세요"
+          placeholder="비밀번호를 다시 입력하세요"
         />
-
-        {confirmPassword && (
-          <p
-            className={`text-xs ${
-              newPassword === confirmPassword
-                ? "text-green-500"
-                : "text-red-500"
-            }`}
-          >
-            {newPassword === confirmPassword
-              ? "비밀번호가 일치합니다."
-              : "비밀번호가 일치하지 않습니다."}
-          </p>
-        )}
 
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -255,50 +397,41 @@ export const ForgotPasswordPage: React.FC = () => {
         {success && (
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-700 text-center">{success}</p>
-            <p className="text-xs text-green-600 mt-1 text-center">
-              잠시 후 로그인 페이지로 이동합니다...
-            </p>
           </div>
         )}
 
-        <Button
-          type="submit"
-          className="w-full"
-          variant="primary"
-          disabled={
-            loading ||
-            !newPassword ||
-            !confirmPassword ||
-            newPassword !== confirmPassword ||
-            newPassword.length < 8
-          }
-        >
-          {loading ? "비밀번호 재설정 중..." : "비밀번호 재설정 완료"}
-        </Button>
+        <div className="flex space-x-3">
+          <Button
+            type="button"
+            className="flex-1"
+            variant="outline"
+            onClick={() => {
+              setCurrentStep("code");
+              setError("");
+              setSuccess("");
+            }}
+          >
+            이전
+          </Button>
+          <Button
+            type="submit"
+            className="flex-1"
+            variant="primary"
+            disabled={loading || !newPassword || !confirmPassword}
+          >
+            {loading ? "설정 중..." : "비밀번호 재설정"}
+          </Button>
+        </div>
       </form>
     </Card>
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-primary">PickTeam</h1>
-          <p className="mt-2 text-neutral-600">비밀번호를 재설정하세요</p>
-        </div>
-
         {currentStep === "email" && renderEmailStep()}
         {currentStep === "code" && renderCodeStep()}
         {currentStep === "password" && renderPasswordStep()}
-
-        <div className="text-center">
-          <Link
-            to="/login"
-            className="text-sm text-neutral-600 hover:text-neutral-800"
-          >
-            ← 로그인으로 돌아가기
-          </Link>
-        </div>
       </div>
     </div>
   );

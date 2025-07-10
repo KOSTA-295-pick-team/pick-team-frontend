@@ -19,6 +19,10 @@ import {
   ValidationResponse,
   EmailVerificationResponse,
   LogoutResponse,
+  SendPasswordResetEmailRequest,
+  VerifyResetCodeRequest,
+  ResetPasswordRequest,
+  PasswordResetResponse,
 } from "./types";
 import { transformUserResponse, getClientInfo } from "./utils";
 import { User } from "../../types";
@@ -54,7 +58,7 @@ async function refreshToken(): Promise<void> {
     );
   }
 
-  const response = await fetch(`${API_BASE_URL}/users/refresh`, {
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -216,59 +220,86 @@ async function userApiRequest<T>(
 
 // UserController API 서비스
 export const userControllerApi = {
-  // 회원가입 (USER_API_DOCUMENTATION 기준으로 수정)
+  // 회원가입 (회원가입용 - 토큰 불필요)
   registerUser: async (data: RegisterUserRequest): Promise<void> => {
-    const response = await userApiRequest<ApiResponse<null>>(
-      "/users/register",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/users/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
 
-    if (response.success) {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new UserApiError(
+        response.status,
+        errorData.message || "회원가입에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    if (result.success) {
       return; // 성공 시 void 반환
     }
 
-    throw new UserApiError(400, response.message || "회원가입에 실패했습니다.");
+    throw new UserApiError(400, result.message || "회원가입에 실패했습니다.");
   },
 
-  // 이메일(ID) 중복 검사 (USER_API_DOCUMENTATION 기준으로 수정)
+  // 이메일(ID) 중복 검사 (회원가입용 - 토큰 불필요)
   checkDuplicateId: async (data: CheckDuplicateIdRequest): Promise<boolean> => {
-    const response = await userApiRequest<ApiResponse<boolean>>(
-      "/users/check-id",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/users/check-id`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
 
-    if (response.success && response.data !== undefined) {
-      return response.data; // API 문서에서 true면 사용 가능
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new UserApiError(
+        response.status,
+        errorData.message || "ID 중복 검사에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    if (result.success && result.data !== undefined) {
+      return result.data; // API 문서에서 true면 사용 가능
     }
 
     throw new UserApiError(
       400,
-      response.message || "ID 중복 검사에 실패했습니다."
+      result.message || "ID 중복 검사에 실패했습니다."
     );
   },
 
-  // 비밀번호 유효성 검사
+  // 비밀번호 유효성 검사 (회원가입용 - 토큰 불필요)
   validatePassword: async (
     data: ValidatePasswordRequest
   ): Promise<ValidationResponse> => {
-    const response = await userApiRequest<ApiResponse<boolean>>(
-      "/users/validate-password",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/users/validate-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
 
-    if (response.success && response.data !== undefined) {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new UserApiError(
+        response.status,
+        errorData.message || "비밀번호 유효성 검사에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    if (result.success && result.data !== undefined) {
       return {
-        isValid: response.data,
-        message: response.data
+        isValid: result.data,
+        message: result.data
           ? "유효한 비밀번호입니다."
           : "비밀번호가 유효하지 않습니다.",
       };
@@ -276,55 +307,75 @@ export const userControllerApi = {
 
     throw new UserApiError(
       400,
-      response.message || "비밀번호 유효성 검사에 실패했습니다."
+      result.message || "비밀번호 유효성 검사에 실패했습니다."
     );
   },
 
-  // 이메일 인증 요청
+  // 이메일 인증 요청 (회원가입용 - 토큰 불필요)
   requestEmailVerification: async (
     data: RequestEmailVerificationRequest
   ): Promise<EmailVerificationResponse> => {
-    const response = await userApiRequest<
-      ApiResponse<EmailVerificationResponse>
-    >("/users/email/request", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-
-    if (response.success) {
-      return response.data || {}; // data가 null이어도 성공으로 처리
-    }
-
-    throw new UserApiError(
-      400,
-      response.message || "이메일 인증 요청에 실패했습니다."
-    );
-  },
-
-  // 이메일 인증 코드 검증
-  verifyEmail: async (data: VerifyEmailRequest): Promise<boolean> => {
-    const response = await userApiRequest<ApiResponse<boolean>>(
-      "/users/email/verify",
-      {
+    const response = await fetch(`${API_BASE_URL}/auth/email/request`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(data),
       }
     );
 
-    if (response.success && response.data !== undefined) {
-      return response.data; // API 문서: data는 boolean (true)
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new UserApiError(
+        response.status,
+        errorData.message || "이메일 인증 요청에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    if (result.success) {
+      return result.data || {}; // data가 null이어도 성공으로 처리
     }
 
     throw new UserApiError(
       400,
-      response.message || "이메일 인증에 실패했습니다."
+      result.message || "이메일 인증 요청에 실패했습니다."
+    );
+  },
+
+  // 이메일 인증 코드 검증 (회원가입용 - 토큰 불필요)
+  verifyEmail: async (data: VerifyEmailRequest): Promise<boolean> => {
+    const response = await fetch(`${API_BASE_URL}/auth/email/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new UserApiError(
+        response.status,
+        errorData.message || "이메일 인증에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    if (result.success && result.data !== undefined) {
+      return result.data; // API 문서: data는 boolean (true)
+    }
+
+    throw new UserApiError(
+      400,
+      result.message || "이메일 인증에 실패했습니다."
     );
   },
 
   // 기본 로그인
   login: async (data: LoginRequest): Promise<LoginResponse> => {
     const response = await userApiRequest<ApiResponse<LoginResponse>>(
-      "/users/login",
+      "/auth/login",
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -363,7 +414,7 @@ export const userControllerApi = {
     };
 
     const response = await userApiRequest<ApiResponse<LoginResponse>>(
-      "/users/login/enhanced",
+      "/auth/login",
       {
         method: "POST",
         body: JSON.stringify(requestData),
@@ -449,15 +500,17 @@ export const userControllerApi = {
   // 기본 로그아웃
   logout: async (): Promise<LogoutResponse> => {
     try {
+      const refreshToken = tokenManager.getRefreshToken();
       const response = await userApiRequest<ApiResponse<LogoutResponse>>(
-        "/users/logout",
+        "/auth/logout",
         {
           method: "POST",
+          body: JSON.stringify({ refreshToken }),
         }
       );
 
-      if (response.success && response.data) {
-        return response.data;
+      if (response.success) {
+        return response.data || { success: true };
       }
 
       throw new UserApiError(
@@ -478,7 +531,7 @@ export const userControllerApi = {
 
     try {
       const response = await userApiRequest<ApiResponse<LogoutResponse>>(
-        "/users/logout/enhanced",
+        "/auth/logout",
         {
           method: "POST",
           body: JSON.stringify(requestData),
@@ -862,5 +915,124 @@ export const userControllerApi = {
     console.log("[DEBUG API] OAuth 삭제된 계정 정보:", data);
 
     return data;
+  },
+
+  // 비밀번호 재설정 이메일 발송
+  sendPasswordResetEmail: async (
+    data: SendPasswordResetEmailRequest
+  ): Promise<void> => {
+    console.log("[DEBUG API] 비밀번호 재설정 이메일 발송 시작:", data.email);
+
+    const response = await fetch(      `${API_BASE_URL}/auth/send-password-reset-email`,{
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log(
+      "[DEBUG API] 비밀번호 재설정 이메일 응답 상태:",
+      response.status
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[DEBUG API] 비밀번호 재설정 이메일 발송 실패:", errorData);
+      throw new UserApiError(
+        response.status,
+        errorData.message || "이메일 발송에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    console.log("[DEBUG API] 비밀번호 재설정 이메일 발송 성공:", result);
+
+    if (!result.success) {
+      throw new UserApiError(
+        400,
+        result.message || "이메일 발송에 실패했습니다."
+      );
+    }
+  },
+
+  // 재설정 코드 확인
+  verifyResetCode: async (
+    data: VerifyResetCodeRequest
+  ): Promise<PasswordResetResponse> => {
+    console.log("[DEBUG API] 재설정 코드 확인 시작:", {
+      email: data.email,
+      hasCode: !!data.resetCode,
+    });
+
+    const response = await fetch(`${API_BASE_URL}/auth/verify-reset-code`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log("[DEBUG API] 재설정 코드 확인 응답 상태:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[DEBUG API] 재설정 코드 확인 실패:", errorData);
+      throw new UserApiError(
+        response.status,
+        errorData.message || "코드 확인에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    console.log("[DEBUG API] 재설정 코드 확인 결과:", result);
+
+    if (result.success && result.data) {
+      return {
+        success: result.data.success,
+        valid: result.data.valid,
+        message: result.data.message,
+      };
+    }
+
+    throw new UserApiError(400, result.message || "코드 확인에 실패했습니다.");
+  },
+
+  // 새 비밀번호 설정
+  resetPassword: async (data: ResetPasswordRequest): Promise<void> => {
+    console.log("[DEBUG API] 비밀번호 재설정 시작:", {
+      email: data.email,
+      hasCode: !!data.resetCode,
+      hasPassword: !!data.newPassword,
+    });
+
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log("[DEBUG API] 비밀번호 재설정 응답 상태:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[DEBUG API] 비밀번호 재설정 실패:", errorData);
+      throw new UserApiError(
+        response.status,
+        errorData.message || "비밀번호 재설정에 실패했습니다."
+      );
+    }
+
+    const result = await response.json();
+    console.log("[DEBUG API] 비밀번호 재설정 성공:", result);
+
+    if (!result.success) {
+      throw new UserApiError(
+        400,
+        result.message || "비밀번호 재설정에 실패했습니다."
+      );
+    }
   },
 };

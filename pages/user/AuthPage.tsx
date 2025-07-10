@@ -520,6 +520,7 @@ export const SignupPage: React.FC = () => {
                 label="비밀번호"
                 name="password"
                 type="password"
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={handlePasswordChange}
@@ -570,6 +571,7 @@ export const SignupPage: React.FC = () => {
                 label="비밀번호 확인"
                 name="confirmPassword"
                 type="password"
+                autoComplete="new-password"
                 required
                 value={confirmPassword}
                 onChange={handleConfirmPasswordChange}

@@ -151,3 +151,25 @@ export interface PasswordValidationResponse {
 export interface EmailVerifyResponse {
   isVerified: boolean;
 }
+
+// 비밀번호 찾기 관련 타입들
+export interface SendPasswordResetEmailRequest {
+  email: string;
+}
+
+export interface VerifyResetCodeRequest {
+  email: string;
+  resetCode: string;
+}
+
+export interface ResetPasswordRequest {
+  email: string;
+  resetCode: string;
+  newPassword: string;
+}
+
+export interface PasswordResetResponse {
+  success: boolean;
+  valid?: boolean;
+  message: string;
+}
