@@ -366,6 +366,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         console.error("로그인 오류:", err);
 
         if (err instanceof UserApiError) {
+          // 삭제된 계정 에러 처리
+          if ((err as any).errorCode === "DELETED_ACCOUNT") {
+            const deletedData = (err as any).deletedAccountData;
+            let errorMessage = err.message;
+
+            if (deletedData) {
+              const remainingDays = deletedData.remainingDays || 0;
+              const supportContact =
+                deletedData.supportContact || "support@pickteam.com";
+
+              errorMessage = `삭제된 계정입니다.\n계정 영구 삭제까지 ${remainingDays}일 남았습니다.\n\n계정 복구나 문의사항이 있으시면\n${supportContact}로 연락주세요.`;
+            }
+
+            setError(errorMessage);
+            return; // throw하지 않고 에러 메시지만 표시
+          }
+
           switch (err.status) {
             case 401:
               setError("이메일 또는 비밀번호가 올바르지 않습니다.");

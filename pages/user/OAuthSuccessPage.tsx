@@ -44,7 +44,82 @@ export const OAuthSuccessPage: React.FC = () => {
         // 에러 체크
         if (error) {
           console.error("[DEBUG OAuthSuccessPage] OAuth 인증 실패:", error);
-          setError(`OAuth 인증에 실패했습니다: ${error}`);
+
+          // 삭제된 계정 에러 처리
+          if (error === "deleted_account") {
+            const accountId = searchParams.get("accountId");
+            console.log(
+              "[DEBUG OAuthSuccessPage] 삭제된 계정 감지, accountId:",
+              accountId
+            );
+
+            try {
+              // 삭제된 계정 상세 정보 API 호출
+              const deletedAccountData =
+                await userControllerApi.getOAuthDeletedAccountInfo(accountId!);
+              console.log(
+                "[DEBUG OAuthSuccessPage] 삭제된 계정 상세 정보:",
+                deletedAccountData
+              );
+
+              // RFC 9457 형식 응답에서 정보 추출
+              const remainingDays =
+                deletedAccountData.extensions?.remainingDays || 0;
+              const supportContact =
+                deletedAccountData.extensions?.supportContact ||
+                "support@pickteam.com";
+              const provider =
+                deletedAccountData.extensions?.provider || "OAuth";
+
+              const errorMessage = `삭제된 계정입니다.\n\n${provider} 계정이 삭제되어 있습니다.\n계정 영구 삭제까지 ${remainingDays}일 남았습니다.\n\n계정 복구나 문의사항이 있으시면\n${supportContact}로 연락주세요.`;
+
+              setError(errorMessage);
+              setLoading(false);
+              return;
+            } catch (apiError) {
+              console.error(
+                "[DEBUG OAuthSuccessPage] 삭제된 계정 정보 조회 실패:",
+                apiError
+              );
+
+              // API 호출 실패 시에도 의미있는 메시지 제공
+              const errorMessage = `삭제된 계정입니다.\n\n계정 복구나 문의사항이 있으시면\nsupport@pickteam.com으로 연락주세요.\n\n(계정 ID: ${accountId})`;
+
+              setError(errorMessage);
+              setLoading(false);
+              return;
+            }
+          }
+
+          // 에러 종류에 따른 상세 메시지
+          let errorMessage = "OAuth 인증에 실패했습니다.";
+          switch (error) {
+            case "server_error":
+              errorMessage =
+                "OAuth 서버에서 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+              break;
+            case "access_denied":
+              errorMessage =
+                "OAuth 인증이 거부되었습니다. 권한 승인이 필요합니다.";
+              break;
+            case "invalid_request":
+              errorMessage =
+                "잘못된 OAuth 요청입니다. 다시 로그인을 시도해주세요.";
+              break;
+            case "unauthorized_client":
+              errorMessage = "OAuth 클라이언트가 인증되지 않았습니다.";
+              break;
+            case "unsupported_response_type":
+              errorMessage = "지원하지 않는 OAuth 응답 형식입니다.";
+              break;
+            case "invalid_scope":
+              errorMessage = "OAuth 권한 범위가 잘못되었습니다.";
+              break;
+            default:
+              errorMessage = `OAuth 인증 오류: ${error}`;
+          }
+
+          setError(errorMessage);
           setLoading(false);
           return;
         }
@@ -220,17 +295,33 @@ export const OAuthSuccessPage: React.FC = () => {
         let errorMessage = "OAuth 처리 중 오류가 발생했습니다.";
 
         if (error instanceof UserApiError) {
-          errorMessage = `OAuth 인증 실패 (${error.status}): ${error.message}`;
+          // 삭제된 계정 에러 처리
+          if ((error as any).errorCode === "DELETED_ACCOUNT") {
+            const deletedData = (error as any).deletedAccountData;
 
-          // 특정 에러 코드에 대한 추가 정보
-          if (error.status === 400) {
-            errorMessage += " (잘못된 임시 코드)";
-          } else if (error.status === 401) {
-            errorMessage += " (인증 실패)";
-          } else if (error.status === 404) {
-            errorMessage += " (사용자를 찾을 수 없음)";
-          } else if (error.status >= 500) {
-            errorMessage += " (서버 오류)";
+            if (deletedData) {
+              const remainingDays = deletedData.remainingDays || 0;
+              const supportContact =
+                deletedData.supportContact || "support@pickteam.com";
+
+              errorMessage = `삭제된 계정입니다.\n\n계정 영구 삭제까지 ${remainingDays}일 남았습니다.\n\n계정 복구나 문의사항이 있으시면\n${supportContact}로 연락주세요.`;
+            } else {
+              errorMessage =
+                error.message || "삭제된 계정입니다. 계정 복구가 필요합니다.";
+            }
+          } else {
+            errorMessage = `OAuth 인증 실패 (${error.status}): ${error.message}`;
+
+            // 특정 에러 코드에 대한 추가 정보
+            if (error.status === 400) {
+              errorMessage += " (잘못된 임시 코드)";
+            } else if (error.status === 401) {
+              errorMessage += " (인증 실패)";
+            } else if (error.status === 404) {
+              errorMessage += " (사용자를 찾을 수 없음)";
+            } else if (error.status >= 500) {
+              errorMessage += " (서버 오류)";
+            }
           }
         } else if (error instanceof Error) {
           errorMessage = `OAuth 처리 오류: ${error.message}`;

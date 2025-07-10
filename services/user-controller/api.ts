@@ -429,6 +429,20 @@ export const userControllerApi = {
       } as LoginResponse;
     }
 
+    // 삭제된 계정 에러 처리
+    if (
+      !response.success &&
+      (response as any).errorCode === "DELETED_ACCOUNT"
+    ) {
+      const deletedAccountError = new UserApiError(
+        400,
+        response.message || "삭제된 계정입니다."
+      );
+      (deletedAccountError as any).errorCode = "DELETED_ACCOUNT";
+      (deletedAccountError as any).deletedAccountData = (response as any).data;
+      throw deletedAccountError;
+    }
+
     throw new UserApiError(400, response.message || "로그인에 실패했습니다.");
   },
 
@@ -732,8 +746,15 @@ export const userControllerApi = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.log("[DEBUG API] OAuth 토큰 교환 에러 응답:", {
+        status: response.status,
+        errorData,
+        errorDataKeys: Object.keys(errorData),
+      });
+
       const errorMessage =
         errorData.message ||
+        errorData.detail ||
         `HTTP ${response.status}: 토큰 교환에 실패했습니다`;
       console.error("[DEBUG API] OAuth 토큰 교환 실패:", errorMessage);
       throw new UserApiError(response.status, errorMessage);
@@ -772,5 +793,74 @@ export const userControllerApi = {
       refreshToken,
       user,
     };
+  },
+
+  // OAuth 삭제된 계정 상세 정보 조회 (RFC 9457 형식)
+  getOAuthDeletedAccountInfo: async (
+    accountId: string
+  ): Promise<{
+    type: string;
+    title: string;
+    status: number;
+    detail: string;
+    instance: string;
+    extensions: {
+      accountStatus: string;
+      accountId: number;
+      deletedAt: string;
+      permanentDeletionDate: string;
+      provider: string;
+      remainingDays: number;
+      canReactivate: boolean;
+      supportContact: string;
+    };
+  }> => {
+    console.log(
+      "[DEBUG API] OAuth 삭제된 계정 정보 조회 시작, accountId:",
+      accountId
+    );
+
+    const response = await fetch(
+      `${API_BASE_URL}/auth/oauth/deleted-account/${accountId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(
+      "[DEBUG API] OAuth 삭제된 계정 정보 응답 상태:",
+      response.status
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[DEBUG API] OAuth 삭제된 계정 정보 조회 실패:", errorData);
+
+      // 403 상태이면서 RFC 9457 형식의 삭제된 계정 정보인 경우 성공으로 처리
+      if (
+        response.status === 403 &&
+        errorData.type === "OAUTH_DELETED_ACCOUNT"
+      ) {
+        console.log(
+          "[DEBUG API] 403이지만 삭제된 계정 정보 반환, 성공으로 처리"
+        );
+        return errorData;
+      }
+
+      throw new UserApiError(
+        response.status,
+        errorData.detail ||
+          errorData.message ||
+          "삭제된 계정 정보 조회에 실패했습니다."
+      );
+    }
+
+    const data = await response.json();
+    console.log("[DEBUG API] OAuth 삭제된 계정 정보:", data);
+
+    return data;
   },
 };
