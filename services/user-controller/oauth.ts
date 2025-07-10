@@ -14,13 +14,10 @@ export type OAuthProvider = "google" | "kakao";
  */
 export const startOAuthLogin = (provider: OAuthProvider): void => {
   const loginUrl = `${API_BASE_URL}/api/auth/oauth/${provider}/login`;
-  console.log(`[DEBUG OAuth] ${provider} 로그인 시작:`, loginUrl);
-  console.log(`[DEBUG OAuth] 현재 페이지:`, window.location.href);
 
   try {
     window.location.href = loginUrl;
   } catch (error) {
-    console.error(`[DEBUG OAuth] ${provider} 로그인 리다이렉트 실패:`, error);
     throw error;
   }
 };

@@ -94,7 +94,6 @@ export const normalizeHashtag = (tag: string): string | null => {
   // 유효성 검증
   const errors = validateHashtag(normalized);
   if (errors.length > 0) {
-    console.warn(`유효하지 않은 해시태그: ${tag}`, errors);
     return null;
   }
 

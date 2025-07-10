@@ -30,9 +30,12 @@ import { tokenManager } from "../tokenManager"; // 통합된 토큰 매니저 �
 
 // API 에러 클래스
 export class UserApiError extends Error {
-  constructor(public status: number, message: string) {
+  public readonly status: number;
+
+  constructor(status: number, message: string) {
     super(message);
     this.name = "UserApiError";
+    this.status = status;
   }
 }
 
@@ -420,57 +423,21 @@ export const userControllerApi = {
       }
     );
 
-    console.log("[DEBUG] 로그인 원본 응답:", {
-      success: response.success,
-      message: response.message,
-      data: response.data,
-      dataKeys: response.data ? Object.keys(response.data) : [],
-      fullResponse: JSON.stringify(response, null, 2),
-    });
-
     if (response.success && response.data) {
       // 백엔드 응답 구조에 맞게 토큰 추출 (유연하게 처리)
-      console.log("[DEBUG] 로그인 응답에서 토큰 저장 시작");
-
       // 백엔드가 data.token으로 보내므로 이에 맞게 수정
       const accessToken =
         (response.data as any).token || response.data.accessToken;
       const refreshToken = response.data.refreshToken;
 
-      console.log("[DEBUG] token 필드 존재:", !!(response.data as any).token);
-      console.log(
-        "[DEBUG] accessToken 필드 존재:",
-        !!response.data.accessToken
-      );
-      console.log("[DEBUG] refreshToken 존재:", !!response.data.refreshToken);
-      console.log("[DEBUG] 추출된 accessToken:", accessToken);
-      console.log("[DEBUG] 추출된 refreshToken:", refreshToken);
-
       // 토큰이 정의되어 있는지 확인
       if (accessToken) {
         tokenManager.setAccessToken(accessToken);
-        console.log("[DEBUG] accessToken 저장 성공");
-      } else {
-        console.error("[DEBUG] accessToken을 찾을 수 없습니다!");
-        console.log("[DEBUG] 사용 가능한 필드:", Object.keys(response.data));
       }
 
       if (refreshToken) {
         tokenManager.setRefreshToken(refreshToken);
-        console.log("[DEBUG] refreshToken 저장 성공");
-      } else {
-        console.warn("[DEBUG] refreshToken을 찾을 수 없습니다!");
       }
-
-      console.log("[DEBUG] 토큰 저장 완료");
-      console.log(
-        "[DEBUG] 저장된 accessToken:",
-        !!tokenManager.getAccessToken()
-      );
-      console.log(
-        "[DEBUG] 저장된 refreshToken:",
-        !!tokenManager.getRefreshToken()
-      );
 
       // LoginResponse 타입에 맞게 반환 (accessToken 필드로 변환)
       return {
@@ -708,17 +675,8 @@ export const userControllerApi = {
 
   // 프로필 이미지 업로드
   uploadProfileImage: async (file: File): Promise<string> => {
-    console.log("[DEBUG API] uploadProfileImage 시작");
-    console.log("[DEBUG API] 파일:", file.name, file.type, file.size);
-
-    const token = tokenManager.getAccessToken();
-    console.log("[DEBUG API] 토큰 상태:", token ? "존재" : "없음");
-    console.log("[DEBUG API] 토큰 값:", token?.substring(0, 20) + "...");
-
     const formData = new FormData();
     formData.append("file", file); // API 문서 기준: "file" 필드명 사용
-
-    console.log("[DEBUG API] FormData 생성 완료, API 호출 시작");
 
     const response = await userApiRequest<ApiResponse<string>>(
       "/users/me/profile-image",
@@ -732,14 +690,10 @@ export const userControllerApi = {
       }
     );
 
-    console.log("[DEBUG API] API 응답:", response);
-
     if (response.success && response.data) {
-      console.log("[DEBUG API] 업로드 성공:", response.data);
       return response.data; // API 문서: 직접 문자열 반환 ("/profile-images/uuid-filename.jpg")
     }
 
-    console.error("[DEBUG API] 업로드 실패:", response);
     throw new UserApiError(
       400,
       response.message || "프로필 이미지 업로드에 실패했습니다."
@@ -781,11 +735,6 @@ export const userControllerApi = {
       provider?: string;
     };
   }> => {
-    console.log(
-      "[DEBUG API] OAuth 토큰 교환 시작, tempCode:",
-      tempCode ? "존재" : "없음"
-    );
-
     const response = await fetch(`${API_BASE_URL}/auth/oauth/exchange-token`, {
       method: "POST",
       headers: {
@@ -794,30 +743,17 @@ export const userControllerApi = {
       body: JSON.stringify({ tempCode }),
     });
 
-    console.log("[DEBUG API] OAuth 토큰 교환 응답 상태:", response.status);
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.log("[DEBUG API] OAuth 토큰 교환 에러 응답:", {
-        status: response.status,
-        errorData,
-        errorDataKeys: Object.keys(errorData),
-      });
 
       const errorMessage =
         errorData.message ||
         errorData.detail ||
         `HTTP ${response.status}: 토큰 교환에 실패했습니다`;
-      console.error("[DEBUG API] OAuth 토큰 교환 실패:", errorMessage);
       throw new UserApiError(response.status, errorMessage);
     }
 
     const data = await response.json();
-    console.log("[DEBUG API] OAuth 토큰 교환 원시 응답:", {
-      fullResponse: data,
-      responseKeys: Object.keys(data),
-      dataKeys: data.data ? Object.keys(data.data) : "data 없음",
-    });
 
     // 백엔드 응답 구조에 맞게 토큰과 사용자 정보 추출
     let token = data.token;
@@ -830,13 +766,6 @@ export const userControllerApi = {
       user = data.data.user || user;
       refreshToken = data.data.refreshToken || refreshToken;
     }
-
-    console.log("[DEBUG API] OAuth 토큰 교환 성공:", {
-      hasToken: !!token,
-      hasUser: !!user,
-      hasRefreshToken: !!refreshToken,
-      tokenLength: token ? token.length : 0,
-    });
 
     return {
       success: data.success,
@@ -867,11 +796,6 @@ export const userControllerApi = {
       supportContact: string;
     };
   }> => {
-    console.log(
-      "[DEBUG API] OAuth 삭제된 계정 정보 조회 시작, accountId:",
-      accountId
-    );
-
     const response = await fetch(
       `${API_BASE_URL}/auth/oauth/deleted-account/${accountId}`,
       {
@@ -882,23 +806,14 @@ export const userControllerApi = {
       }
     );
 
-    console.log(
-      "[DEBUG API] OAuth 삭제된 계정 정보 응답 상태:",
-      response.status
-    );
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("[DEBUG API] OAuth 삭제된 계정 정보 조회 실패:", errorData);
 
       // 403 상태이면서 RFC 9457 형식의 삭제된 계정 정보인 경우 성공으로 처리
       if (
         response.status === 403 &&
         errorData.type === "OAUTH_DELETED_ACCOUNT"
       ) {
-        console.log(
-          "[DEBUG API] 403이지만 삭제된 계정 정보 반환, 성공으로 처리"
-        );
         return errorData;
       }
 
@@ -911,7 +826,6 @@ export const userControllerApi = {
     }
 
     const data = await response.json();
-    console.log("[DEBUG API] OAuth 삭제된 계정 정보:", data);
 
     return data;
   },
@@ -920,8 +834,6 @@ export const userControllerApi = {
   sendPasswordResetEmail: async (
     data: SendPasswordResetEmailRequest
   ): Promise<void> => {
-    console.log("[DEBUG API] 비밀번호 재설정 이메일 발송 시작:", data.email);
-
     const response = await fetch(
       `${API_BASE_URL}/auth/send-password-reset-email`,
       {
@@ -933,14 +845,8 @@ export const userControllerApi = {
       }
     );
 
-    console.log(
-      "[DEBUG API] 비밀번호 재설정 이메일 응답 상태:",
-      response.status
-    );
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("[DEBUG API] 비밀번호 재설정 이메일 발송 실패:", errorData);
       throw new UserApiError(
         response.status,
         errorData.message || "이메일 발송에 실패했습니다."
@@ -948,7 +854,6 @@ export const userControllerApi = {
     }
 
     const result = await response.json();
-    console.log("[DEBUG API] 비밀번호 재설정 이메일 발송 성공:", result);
 
     if (!result.success) {
       throw new UserApiError(
@@ -962,11 +867,6 @@ export const userControllerApi = {
   verifyResetCode: async (
     data: VerifyResetCodeRequest
   ): Promise<PasswordResetResponse> => {
-    console.log("[DEBUG API] 재설정 코드 확인 시작:", {
-      email: data.email,
-      hasCode: !!data.resetCode,
-    });
-
     const response = await fetch(`${API_BASE_URL}/auth/verify-reset-code`, {
       method: "POST",
       headers: {
@@ -975,11 +875,8 @@ export const userControllerApi = {
       body: JSON.stringify(data),
     });
 
-    console.log("[DEBUG API] 재설정 코드 확인 응답 상태:", response.status);
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("[DEBUG API] 재설정 코드 확인 실패:", errorData);
       throw new UserApiError(
         response.status,
         errorData.message || "코드 확인에 실패했습니다."
@@ -987,7 +884,6 @@ export const userControllerApi = {
     }
 
     const result = await response.json();
-    console.log("[DEBUG API] 재설정 코드 확인 결과:", result);
 
     if (result.success && result.data) {
       return {
