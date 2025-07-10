@@ -316,13 +316,12 @@ export const userControllerApi = {
     data: RequestEmailVerificationRequest
   ): Promise<EmailVerificationResponse> => {
     const response = await fetch(`${API_BASE_URL}/auth/email/request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      }
-    );
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -923,13 +922,16 @@ export const userControllerApi = {
   ): Promise<void> => {
     console.log("[DEBUG API] 비밀번호 재설정 이메일 발송 시작:", data.email);
 
-    const response = await fetch(      `${API_BASE_URL}/auth/send-password-reset-email`,{
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/auth/send-password-reset-email`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      }
+    );
 
     console.log(
       "[DEBUG API] 비밀번호 재설정 이메일 응답 상태:",
