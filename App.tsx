@@ -18,9 +18,10 @@ import {
     CreateWorkspaceModal, JoinWorkspaceModal, NewChatModal, 
     NewVideoConferenceModal, TeamActionModal, TeamCreateModal, WorkspaceSettingsModal
 } from './components';
-import { Workspace, TeamProject, User as UserType, ChatRoom, ChatRoomMember } from './types';
+import { Workspace, TeamProject, User as UserType, ChatRoom, ChatRoomMember, VideoChannel } from './types';
 import { MagnifyingGlassIcon, HashtagIcon, LockClosedIcon, UserGroupIcon, ArrowLeftIcon, Cog6ToothIcon, LinkIcon, ShieldCheckIcon, UserMinusIcon, NoSymbolIcon, CheckCircleIcon, XMarkIcon, ChevronDownIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { teamApi } from './services/api';
+import { videoApi } from './services/videoApi';
 
 
 // Mock Data for non-chat related entities
@@ -164,8 +165,8 @@ const TeamProjectSidebar: React.FC = () => {
   
   const [confirmDeleteInfo, setConfirmDeleteInfo] = useState<{type: 'chat' | 'video', id: string, name: string} | null>(null);
 
-  const initialVideoRooms: { id: string; name: string }[] = [];
-  const [videoRooms, setVideoRooms] = useState(initialVideoRooms);
+  const initialVideoChannels: VideoChannel[] = [];
+  const [videoRooms, setVideoRooms] = useState<VideoChannel[]>(initialVideoChannels);
 
   // 팀 목록 상태 추가
   const [teamsForCurrentWorkspace, setTeamsForCurrentWorkspace] = useState<TeamProject[]>([]);
@@ -186,11 +187,22 @@ const TeamProjectSidebar: React.FC = () => {
       setIsLoadingTeams(false);
     }
   };
+  const loadVideoRooms = async ()=>{
+      if (!currentWorkspace) return;
+  
+      try {
+        const channelList = await videoApi.getVideoChannels(currentWorkspace.id);
+        setVideoRooms(channelList);
+      } catch (error: any) {
+        console.error('화상회의 채널 목록 로드 실패:', error);
+      } 
+    }
 
-  // 워크스페이스 변경 시 팀 목록 로드
+  // 워크스페이스 변경 시 팀 목록 및 비디오 룸 목록 로드
   useEffect(() => {
     if (currentWorkspace) {
       loadTeams();
+      loadVideoRooms();
     }
   }, [currentWorkspace]);
 
@@ -220,9 +232,9 @@ const TeamProjectSidebar: React.FC = () => {
     navigate(`/ws/${currentWorkspace.id}/chat/${roomId}`);
   };
 
-  const selectVideoRoom = (roomName: string) => {
+  const selectVideoRoom = (roomId: string,roomName:string) => {
     if (currentWorkspace) {
-        navigate(`/ws/${currentWorkspace.id}/video/live?room=${encodeURIComponent(roomName)}`);
+        navigate(`/ws/${currentWorkspace.id}/video/live?roomId=${roomId}&roomName=${encodeURIComponent(roomName)}`);
     }
   };
 
@@ -371,14 +383,14 @@ const TeamProjectSidebar: React.FC = () => {
         {videoRooms.map(room => (
             <div key={room.id} className="flex items-center group">
                 <button
-                    onClick={() => selectVideoRoom(room.name)}
+                    onClick={() => selectVideoRoom(room.id,room.name)}
                     className="flex-grow text-left px-3 py-1.5 rounded-l-md text-sm flex items-center truncate text-neutral-600 hover:bg-neutral-200"
                 >
                     <VideoCameraIcon className="w-4 h-4 mr-1.5 text-neutral-400 group-hover:text-neutral-600"/>
                     {room.name}
                 </button>
                  <button 
-                    onClick={() => handleDeleteVideoRoom(room.id, room.name)}
+                    onClick={() => handleDeleteVideoRoom(room.id,room.name)}
                     className="p-1.5 rounded-r-md opacity-0 group-hover:opacity-100 hover:bg-red-100 text-neutral-600 hover:bg-neutral-200"
                     title="화상회의 채널 삭제"
                 >

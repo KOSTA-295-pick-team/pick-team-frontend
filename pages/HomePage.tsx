@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { Card, Button, ProfileSummaryCard, Modal } from '../components';
-import { TeamProject, User, Workspace } from '../types'; // Updated type import
+import { TeamProject, User, VideoChannel, Workspace } from '../types'; // Updated type import
 import { workspaceApi, teamApi } from '../services/api';
 import { UserIcon, UsersIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import TeamActionModal from '../components/modals/TeamActionModal';
+import { videoApi } from '../services/videoApi';
 
 // 목업 데이터 완전 제거 - 실제 API만 사용
 // const MOCK_TEAM_PROJECTS_ALL: TeamProject[] = [];
@@ -37,6 +38,7 @@ export const HomePage: React.FC = () => {
   // 팀 액션 모달 상태
   const [isTeamActionModalOpen, setIsTeamActionModalOpen] = useState(false);
 
+  
   // 워크스페이스 멤버 목록 조회 (전체)
   const fetchWorkspaceMembers = async () => {
     if (!currentWorkspace) return;
@@ -92,6 +94,7 @@ export const HomePage: React.FC = () => {
       setIsLoadingTeams(false);
     }
   };
+  
 
   // 팀 액션 모달 열기
   const handleOpenTeamActionModal = () => {
@@ -134,6 +137,7 @@ export const HomePage: React.FC = () => {
   
   // 실제 팀 프로젝트는 API에서 가져옴
   const teamsForCurrentWorkspace = teams;
+
 
 
   return (

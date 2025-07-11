@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { Card, Button, Input } from '../components';
-import { User } from '../types';
+import { User, VideoMember } from '../types';
+import { videoApi } from '../services/videoApi';
 import { ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/outline';
 
 
 export const VideoConferencePage: React.FC = () => {
-  const { currentUser, allUsersForChat } = useAuth();
+  const { currentUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -16,13 +17,18 @@ export const VideoConferencePage: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [participants, setParticipants] = useState<User[]>([]);
-
+  const [participants, setParticipants] = useState<VideoMember[]>([]);
+  
+  
+  
+  const queryParams = new URLSearchParams(location.search);
+  const IdFromQuery = queryParams.get('roomId');
+  const NameFromQuery = queryParams.get('roomName');
+  
   useEffect(() => {
-    const queryParams = new URLSearchParams(location.search);
-    const nameFromQuery = queryParams.get('room');
-    if (nameFromQuery) {
-      setRoomName(decodeURIComponent(nameFromQuery));
+    
+    if (NameFromQuery) {
+      setRoomName(decodeURIComponent(NameFromQuery));
     } else {
       // If no room name, redirect, but only if a user is already authenticated and present.
       // Otherwise, the !currentUser check below will handle it.
@@ -37,16 +43,21 @@ export const VideoConferencePage: React.FC = () => {
   }, [location.search, navigate, workspaceId, currentUser]); // Added currentUser dependency
   
   useEffect(() => {
+    (async()=>{
     if (currentUser) {
-        // Demo participants: current user + 2 others from allUsersForChat
-        const otherDemoParticipants = allUsersForChat
-            .filter(u => u.id !== currentUser.id)
-            .slice(0, 2); // Take up to 2 other users
-        setParticipants([currentUser, ...otherDemoParticipants]);
-    } else {
-        setParticipants([]); // Clear participants if no user
+      try{
+        await videoApi.joinVideoChannel(workspaceId!,IdFromQuery!)
+
+        const participants = await videoApi.getChannelParticipants(workspaceId!,IdFromQuery!);
+        setParticipants(participants);
+
+      }catch(e){
+        console.error(e);
+        setParticipants([]);
+      }
     }
-  }, [currentUser, allUsersForChat]);
+     })();
+  }, [currentUser]);
 
 
   if (!currentUser) {
@@ -68,7 +79,7 @@ export const VideoConferencePage: React.FC = () => {
                 {participants.map(member => (
                 <div key={member.id} className="bg-neutral-700 rounded aspect-video flex flex-col items-center justify-center text-white relative">
                     <img 
-                    src={member.profilePictureUrl || `https://picsum.photos/seed/${member.id}/120/120`} 
+                    src={member.profileImageUrl || `https://picsum.photos/seed/${member.id}/120/120`} 
                     alt={member.name} 
                     className={`w-16 h-16 md:w-20 md:h-20 rounded-full mb-2 ${isCameraOff && member.id === currentUser.id ? 'opacity-50' : ''}`}
                     />
