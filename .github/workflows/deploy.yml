@@ -128,11 +128,11 @@ jobs:
             
             # 기존 컨테이너 정리 (안전한 방식으로)
             echo "기존 서비스 중지 중..."
-            if docker-compose ps -q 2>/dev/null | grep -q .; then
+            if sudo docker-compose ps -q 2>/dev/null | grep -q .; then
               echo "기존 컨테이너가 실행 중입니다. 중지를 시도합니다..."
               
               # 컨테이너 중지 시도
-              if docker-compose down --remove-orphans; then
+              if sudo docker-compose down --remove-orphans; then
                 echo "기존 컨테이너가 성공적으로 중지되었습니다."
               else
                 echo "❌ 기존 컨테이너 중지 실패 - 배포를 중단합니다."
@@ -145,14 +145,14 @@ jobs:
             
             # 이전 이미지 정리
             echo "사용하지 않는 Docker 이미지 정리 중..."
-            docker image prune -f || echo "이미지 정리 중 오류 발생"
-                        
+            sudo docker image prune -f || echo "이미지 정리 중 오류 발생"
+
             # 새로운 서비스 빌드 및 시작
             echo "새로운 서비스 빌드 및 시작 중..."
-            docker-compose up -d --build || {
+            sudo docker-compose up -d --build || {
               echo "Docker Compose 실행 실패"
               echo "상세 로그 확인:"
-              docker-compose logs --tail=50
+              sudo docker-compose logs --tail=50
               exit 1
             }
             
