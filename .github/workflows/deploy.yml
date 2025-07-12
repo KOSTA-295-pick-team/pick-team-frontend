@@ -129,18 +129,24 @@ jobs:
             # 기존 컨테이너 정리 (안전한 방식으로)
             echo "기존 서비스 중지 중..."
             if docker-compose ps -q 2>/dev/null | grep -q .; then
-              echo "기존 컨테이너가 실행 중입니다. 중지합니다..."
-              docker-compose down --remove-orphans || {
-                echo "기존 컨테이너 중지 중 오류 발생했지만 계속 진행합니다."
-              }
+              echo "기존 컨테이너가 실행 중입니다. 중지를 시도합니다..."
+              
+              # 컨테이너 중지 시도
+              if docker-compose down --remove-orphans; then
+                echo "기존 컨테이너가 성공적으로 중지되었습니다."
+              else
+                echo "❌ 기존 컨테이너 중지 실패 - 배포를 중단합니다."
+                echo "수동으로 컨테이너를 확인하고 중지한 후 다시 배포하세요."
+                exit 1
+              fi
             else
-              echo "실행 중인 컨테이너가 없습니다."
+              echo "실행 중인 컨테이너가 없습니다. 배포를 계속 진행합니다."
             fi
             
-            # 이전 이미지 정리 (선택적)
+            # 이전 이미지 정리
             echo "사용하지 않는 Docker 이미지 정리 중..."
             docker image prune -f || echo "이미지 정리 중 오류 발생"
-            
+                        
             # 새로운 서비스 빌드 및 시작
             echo "새로운 서비스 빌드 및 시작 중..."
             docker-compose up -d --build || {
@@ -150,11 +156,5 @@ jobs:
               exit 1
             }
             
-            # 서비스 시작 대기
-            echo "서비스 시작 확인 중..."
-            sleep 15
-            
-            # 배포 결과 확인
-            echo "컨테이너 상태 확인:"
-            docker-compose ps
-            
+            echo "배포 완료"
+            echo "배포 완료 시간: $(date '+%Y-%m-%d %H:%M:%S')"
