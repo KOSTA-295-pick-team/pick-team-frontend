@@ -1,0 +1,160 @@
+name: Deploy React App to EC2  # 이 GitHub Actions 워크플로우의 이름 (Actions 탭에 표시됨)
+
+on:
+  push:
+    branches:
+      - main  # main 브랜치에 push 이벤트가 발생했을 때 워크플로우 실행
+      - production # production 브랜치에 push 이벤트가 발생했을 때 워크플로우 실행
+
+jobs:
+  deploy:                      # 배포 작업의 고유 ID
+    name: Deploy to EC2        # GitHub Actions UI에 표시될 작업 이름
+    runs-on: ubuntu-latest     # GitHub Actions가 실행될 가상 머신 (Ubuntu 최신 버전)
+
+    env:
+      GITHUB_REF_NAME: ${{ github.ref_name }}     # 이벤트가 일어난 브랜치 이름 읽어오기
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4 # 현재 레포지토리의 코드를 가져옴 (Git clone)
+
+      - name: Node.js 환경 설정
+        uses: actions/setup-node@v4  # Node.js 환경 설정
+        with:
+          node-version: 20   # Node.js 20버전 설치
+          cache: 'npm'       # npm 캐시 활용으로 빌드 속도 향상
+
+      - name: 의존성 설치
+        run: npm install  # npm ci 대신 npm install 사용으로 유연한 관리
+
+      - name: 브랜치 환경 로그 확인
+        run: |
+          echo "=== 배포 환경 정보 ==="
+          echo "현재 브랜치: ${GITHUB_REF_NAME}"
+          echo "커밋 SHA: ${{ github.sha }}"
+          echo "실행자: ${{ github.actor }}"
+          echo "==========================="
+
+      - name: 환경변수 및 호스트 설정
+        run: |
+          if [ "${GITHUB_REF_NAME}" == "main" ]; then
+            echo "${{ secrets.ENV_DEV }}" > .env # main 브랜치일 경우 DEV 환경변수 적용
+            echo "EC2_HOST=${{ secrets.EC2_HOST_DEV }}" >> $GITHUB_ENV
+            echo "DEPLOY_ENV=development" >> $GITHUB_ENV
+            echo "개발 환경 설정 완료"
+          elif [ "${GITHUB_REF_NAME}" == "production" ]; then
+            echo "${{ secrets.ENV_PROD }}" > .env # production 브랜치일 경우 PROD 환경변수 적용
+            echo "EC2_HOST=${{ secrets.EC2_HOST_PROD }}" >> $GITHUB_ENV
+            echo "DEPLOY_ENV=production" >> $GITHUB_ENV
+            echo "운영 환경 설정 완료"
+          else
+            echo "지원되지 않는 브랜치입니다: ${GITHUB_REF_NAME}"
+            echo "main 또는 production 브랜치만 배포 가능합니다."
+            exit 1
+          fi
+
+      - name: React 앱 빌드
+        run: |
+          echo "React 앱 빌드 시작..."
+          npm run build
+          
+          # 빌드 결과 검증
+          if [ ! -d "./dist" ]; then
+            echo "빌드 실패: dist 폴더가 생성되지 않았습니다."
+            exit 1
+          fi
+          
+          echo "React 앱 빌드 완료"
+          echo "빌드 폴더 크기: $(du -sh ./dist | cut -f1)"
+
+      - name: 배포 필수 파일 검증
+        run: |
+          echo "배포에 필요한 파일들 검증 중..."
+          
+          # 필수 파일 목록
+          required_files=(
+            "./docker-compose.yml"
+            "./dist"
+            "./Dockerfile"
+            "./.env"
+          )
+          
+          # 각 파일 존재 확인
+          for file in "${required_files[@]}"; do
+            if [ ! -e "$file" ]; then
+              echo "필수 파일이 없습니다: $file"
+              exit 1
+            else
+              echo "$file 확인됨"
+            fi
+          done
+          
+          echo "모든 필수 파일 검증 완료"
+
+      - name: EC2로 파일 복사
+        uses: appleboy/scp-action@v0.1.7  # EC2에 파일을 복사
+        with:
+          host: ${{ env.EC2_HOST }}         # EC2의 공인 IP 또는 도메인
+          username: ${{ secrets.EC2_USERNAME }} # EC2 접속용 사용자명
+          key: ${{ secrets.EC2_SSH_KEY }}     # SSH 개인 키
+          source: "./docker-compose.yml,./dist,./Dockerfile,./.env"  # .env 파일도 포함
+          target: "~/react-cicd"              # EC2 상의 대상 디렉토리
+          timeout: 300s                       # 타임아웃 설정 (5분)
+          command_timeout: 60s                # 개별 명령어 타임아웃
+
+      - name: EC2 서버 배포 실행
+        uses: appleboy/ssh-action@v1.0.3  # EC2 서버에 SSH로 접속하여 명령어 실행
+        with:
+          host: ${{ env.EC2_HOST }}         # EC2의 IP
+          username: ${{ secrets.EC2_USERNAME }} # 로그인 사용자명
+          key: ${{ secrets.EC2_SSH_KEY }}       # SSH 개인 키
+          timeout: 600s                         # SSH 연결 타임아웃 (10분)
+          command_timeout: 300s                 # 명령어 실행 타임아웃 (5분)
+          script: |                            # 접속 후 실행할 명령어 목록
+            set -e  # 오류 발생 시 스크립트 즉시 중단
+            
+            echo "EC2 서버에서 배포 시작..."
+            echo "배포 환경: ${{ env.DEPLOY_ENV }}"
+            echo "배포 시작 시간: $(date '+%Y-%m-%d %H:%M:%S')"
+            
+            # 배포 디렉토리로 이동
+            cd ~/react-cicd || {
+              echo "react-cicd 디렉토리를 찾을 수 없습니다."
+              exit 1
+            }
+            
+            echo "현재 디렉토리 내용 확인:"
+            ls -la
+            
+            # 기존 컨테이너 정리 (안전한 방식으로)
+            echo "기존 서비스 중지 중..."
+            if docker-compose ps -q 2>/dev/null | grep -q .; then
+              echo "기존 컨테이너가 실행 중입니다. 중지를 시도합니다..."
+              
+              # 컨테이너 중지 시도
+              if docker-compose down --remove-orphans; then
+                echo "기존 컨테이너가 성공적으로 중지되었습니다."
+              else
+                echo "❌ 기존 컨테이너 중지 실패 - 배포를 중단합니다."
+                echo "수동으로 컨테이너를 확인하고 중지한 후 다시 배포하세요."
+                exit 1
+              fi
+            else
+              echo "실행 중인 컨테이너가 없습니다. 배포를 계속 진행합니다."
+            fi
+            
+            # 이전 이미지 정리
+            echo "사용하지 않는 Docker 이미지 정리 중..."
+            docker image prune -f || echo "이미지 정리 중 오류 발생"
+                        
+            # 새로운 서비스 빌드 및 시작
+            echo "새로운 서비스 빌드 및 시작 중..."
+            docker-compose up -d --build || {
+              echo "Docker Compose 실행 실패"
+              echo "상세 로그 확인:"
+              docker-compose logs --tail=50
+              exit 1
+            }
+            
+            echo "배포 완료"
+            echo "배포 완료 시간: $(date '+%Y-%m-%d %H:%M:%S')"
