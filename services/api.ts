@@ -1,7 +1,7 @@
 // API 서비스 - 백엔드와의 통신을 담당하는 스크립트
 import { User, Workspace } from '../types';
 
-const API_BASE_URL = 'https://www.pickteam.site:8081/api';
+const API_BASE_URL = '/api';
 
 // JWT 토큰 관리
 const TOKEN_KEY = 'auth_token';
