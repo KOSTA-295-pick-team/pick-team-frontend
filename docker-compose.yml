@@ -5,7 +5,7 @@ services:           # 여러 서비스(컨테이너) 정의 시작
     build: .        # 현재 디렉토리의 Dockerfile을 기준으로 이미지 빌드
     container_name: react-container  # 생성될 컨테이너의 이름 지정
     ports:
-      - "80:80"     # 포트번호 (AWS 이용한 배포에선 80포트 고정, 추후 마이그레이션할때 환경변수로 교체 필요함)
+      - "${FRONTEND_PORT}:80"     # 포트번호 (외부포트 3010 -> 컨테이너 내부포트 80으로 설정. nginx와 충돌하지 않도록 하기 위함)
     restart: always # 컨테이너가 중지되면 항상 재시작
     
     networks:
