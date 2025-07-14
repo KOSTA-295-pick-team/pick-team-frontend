@@ -134,7 +134,7 @@ export interface LoginResponse {
 export const authApi = {
   // 로그인
   login: async (data: LoginRequest): Promise<LoginResponse> => {
-    const response = await apiRequest<{success: boolean; message: string; data: LoginResponse}>('/users/login', {
+    const response = await apiRequest<{success: boolean; message: string; data: LoginResponse}>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     });
