@@ -1,25 +1,26 @@
 import { apiRequest, tokenManager } from '@/lib/apiClient';
 import { LoginRequest, LoginResponse } from '@/features/user/types/user';
 
-// 백엔드의 ApiResponse<T> 에 대응하는 타입
+// 백엔드의 ApiResponse 래퍼 타입
 interface ApiResponse<T> {
+  success: boolean;
   message: string;
+  errorCode: string | null;
   data: T;
 }
 
 export const authApi = {
   // 로그인
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    // ApiResponse<LoginResponse> 형태로 응답을 기대하도록 수정
     const response = await apiRequest<ApiResponse<LoginResponse>>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
 
     // response.data 에서 실제 LoginResponse 객체를 추출
-    if (response && response.data && response.data.accessToken) {
+    if (response && response.success && response.data && response.data.token) {
       const loginData = response.data;
-      tokenManager.setAccessToken(loginData.accessToken);
+      tokenManager.setAccessToken(loginData.token); // token 필드 사용
       if (loginData.refreshToken) {
         tokenManager.setRefreshToken(loginData.refreshToken);
       }
@@ -31,10 +32,12 @@ export const authApi = {
   // 로그아웃
   logout: async (): Promise<void> => {
     try {
-      await apiRequest('/users/logout', { method: 'POST' });
+      await apiRequest('/auth/logout', { method: 'POST' });
     } catch (error) {
-      console.error('Logout API call failed, proceeding with local cleanup.', error);
+      // 백엔드 로그아웃 실패해도 로컬 정리는 진행
+      console.warn('Backend logout failed, but clearing local tokens:', error);
     } finally {
+      // 백엔드 성공/실패 관계없이 로컬 토큰은 항상 정리
       tokenManager.clearTokens();
     }
   },
