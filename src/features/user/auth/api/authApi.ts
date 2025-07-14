@@ -11,7 +11,7 @@ export const authApi = {
   // 로그인
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
     // ApiResponse<LoginResponse> 형태로 응답을 기대하도록 수정
-    const response = await apiRequest<ApiResponse<LoginResponse>>('/users/login', {
+    const response = await apiRequest<ApiResponse<LoginResponse>>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
