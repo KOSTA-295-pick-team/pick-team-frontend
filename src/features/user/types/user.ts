@@ -20,7 +20,7 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  accessToken: string;
+  token: string; // 백엔드에서 token으로 반환
   refreshToken: string;
   tokenType?: string;
   expiresIn: number;
