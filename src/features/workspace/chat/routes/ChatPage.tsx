@@ -5,6 +5,7 @@ import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { ChatMessage as ChatMessageType } from '@/features/workspace/chat/types/chat';
 import { Card, TextArea, Button } from '@/components/ui';
 import { XCircleIcon } from '@/assets/icons';
+import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
 
 // Chat messages - in a real app, fetch from backend or context based on roomId
 const ALL_CHAT_MESSAGES: ChatMessageType[] = [
@@ -95,57 +96,62 @@ export const ChatPage: React.FC = () => {
   const chatRoomDisplayName = roomId; // roomId로 대체
 
   return (
-    <Card title={`대화: ${chatRoomDisplayName}`} className="flex flex-col h-[calc(100vh-8rem-4rem)]"> {/* Adjust height as needed */}
-      <div className="flex-grow space-y-3 overflow-y-auto mb-3 pr-2 p-2 border border-neutral-200 rounded-md bg-neutral-50 scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-neutral-100">
-        {messages.map(msg => (
-          <div key={msg.id} className={`flex ${msg.userId === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[70%] p-2.5 rounded-lg shadow ${msg.userId === currentUser.id ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-800'}`}>
-              {msg.attachment && (
-                <div className="mb-1 p-2 border border-neutral-300 rounded bg-white/50">
-                  {msg.attachment.type === 'image' ? (
-                    <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
-                  ) : (
-                    <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
-                      <XCircleIcon className="w-4 h-4 mr-1"/> {msg.attachment.fileName}
-                    </a>
+    <div className="flex">
+      <TeamProjectSidebar />
+      <div className="flex-1 ml-64 p-4 sm:p-6 lg:p-8">
+        <Card title={`대화: ${chatRoomDisplayName}`} className="flex flex-col h-[calc(100vh-8rem-4rem)]">
+          <div className="flex-grow space-y-3 overflow-y-auto mb-3 pr-2 p-2 border border-neutral-200 rounded-md bg-neutral-50 scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-neutral-100">
+            {messages.map(msg => (
+              <div key={msg.id} className={`flex ${msg.userId === currentUser.id ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[70%] p-2.5 rounded-lg shadow ${msg.userId === currentUser.id ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-800'}`}>
+                  {msg.attachment && (
+                    <div className="mb-1 p-2 border border-neutral-300 rounded bg-white/50">
+                      {msg.attachment.type === 'image' ? (
+                        <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
+                      ) : (
+                        <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
+                          <XCircleIcon className="w-4 h-4 mr-1"/> {msg.attachment.fileName}
+                        </a>
+                      )}
+                    </div>
                   )}
+                  {msg.text && <p className="text-sm whitespace-pre-line">{msg.text}</p>}
+                  <p className={`text-xs mt-1 ${msg.userId === currentUser.id ? 'text-blue-200 text-right' : 'text-neutral-500'}`}>
+                    {msg.userName}, {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-              )}
-              {msg.text && <p className="text-sm whitespace-pre-line">{msg.text}</p>}
-              <p className={`text-xs mt-1 ${msg.userId === currentUser.id ? 'text-blue-200 text-right' : 'text-neutral-500'}`}>
-                {msg.userName}, {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
-        ))}
-        <div ref={messagesEndRef} />
+          {attachedFile && (
+            <div className="p-2 border-t border-neutral-200 text-sm text-neutral-600 flex justify-between items-center">
+              <span>첨부 파일: {attachedFile.name} ({(attachedFile.size / 1024).toFixed(1)} KB)</span>
+              <button onClick={() => {setAttachedFile(null); if(fileInputRef.current) fileInputRef.current.value = "";}} className="text-red-500 hover:text-red-700">
+                <XCircleIcon className="w-5 h-5"/>
+              </button>
+            </div>
+          )}
+          <div className="flex items-center space-x-2 pt-2 border-t border-neutral-200">
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" id="chat-file-input"/>
+            <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} title="파일 첨부">
+              <XCircleIcon className="w-5 h-5"/>
+            </Button>
+            <TextArea 
+              value={newMessage} 
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+              placeholder="메시지 입력... (Shift+Enter로 줄바꿈)" 
+              className="flex-grow !py-2"
+              rows={1} 
+              aria-label="메시지 입력창"
+            />
+            <Button onClick={handleSendMessage} title="전송 (Enter)" size="sm">
+              <XCircleIcon className="w-5 h-5"/>
+            </Button>
+          </div>
+        </Card>
       </div>
-      {attachedFile && (
-        <div className="p-2 border-t border-neutral-200 text-sm text-neutral-600 flex justify-between items-center">
-          <span>첨부 파일: {attachedFile.name} ({(attachedFile.size / 1024).toFixed(1)} KB)</span>
-          <button onClick={() => {setAttachedFile(null); if(fileInputRef.current) fileInputRef.current.value = "";}} className="text-red-500 hover:text-red-700">
-            <XCircleIcon className="w-5 h-5"/>
-          </button>
-        </div>
-      )}
-      <div className="flex items-center space-x-2 pt-2 border-t border-neutral-200">
-        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" id="chat-file-input"/>
-        <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} title="파일 첨부">
-          <XCircleIcon className="w-5 h-5"/>
-        </Button>
-        <TextArea 
-          value={newMessage} 
-          onChange={(e) => setNewMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-          placeholder="메시지 입력... (Shift+Enter로 줄바꿈)" 
-          className="flex-grow !py-2"
-          rows={1} 
-          aria-label="메시지 입력창"
-        />
-        <Button onClick={handleSendMessage} title="전송 (Enter)" size="sm">
-          <XCircleIcon className="w-5 h-5"/>
-        </Button>
-      </div>
-    </Card>
+    </div>
   );
 };

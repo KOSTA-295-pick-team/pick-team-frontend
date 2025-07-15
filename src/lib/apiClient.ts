@@ -7,6 +7,21 @@ const API_BASE_URL = '/api';
 const TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
+// JWT 토큰 디코딩 유틸리티
+function decodeJWT(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('JWT 토큰 디코딩 실패:', error);
+    return null;
+  }
+}
+
 export const tokenManager = {
   getAccessToken: () => localStorage.getItem(TOKEN_KEY),
   setAccessToken: (token: string) => localStorage.setItem(TOKEN_KEY, token),
@@ -15,6 +30,14 @@ export const tokenManager = {
   clearTokens: () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
+  // JWT 토큰에서 사용자 ID 추출
+  getUserId: () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return null;
+    
+    const decoded = decodeJWT(token);
+    return decoded?.sub || null; // 'sub' 필드가 사용자 ID
   }
 };
 
@@ -30,11 +53,13 @@ export class ApiError extends Error {
 export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = tokenManager.getAccessToken();
+  const userId = tokenManager.getUserId();
   
   const config: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
       ...(token && { 'Authorization': `Bearer ${token}` }),
+      ...(userId && { 'Account-Id': userId }),
       ...options.headers,
     },
     ...options,
@@ -52,11 +77,13 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
           await authApi.refreshToken(); // 분리된 authApi 사용
           // 새 토큰으로 다시 요청
           const newToken = tokenManager.getAccessToken();
+          const newUserId = tokenManager.getUserId();
           const retryConfig: RequestInit = {
             ...config,
             headers: {
               ...config.headers,
               'Authorization': `Bearer ${newToken}`,
+              ...(newUserId && { 'Account-Id': newUserId }),
             }
           };
           const retryResponse = await fetch(url, retryConfig);
