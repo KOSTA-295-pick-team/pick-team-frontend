@@ -11,34 +11,11 @@ import {
     ChatBubbleIcon,
     LockClosedIcon 
 } from '@/assets/icons';
+import TeamCreateModal from '@/features/teamspace/team/components/TeamCreateModal';
+import NewChatModal from '@/features/workspace/chat/components/NewChatModal';
+import WorkspaceSettingsModal from '@/features/workspace/management/components/WorkspaceSettingsModal';
 
-// 임시 모달 컴포넌트들 - 실제 구현 시 수정 필요
-const TeamCreateModal: React.FC<{ isOpen: boolean; onClose: () => void; onTeamCreated: (team: Team) => void }> = ({ isOpen, onClose, onTeamCreated }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg">
-                <h2 className="text-lg font-bold mb-4">팀 생성</h2>
-                <p className="mb-4">팀 생성 모달이 구현되지 않았습니다.</p>
-                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
-            </div>
-        </div>
-    );
-};
-
-const NewChatModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg">
-                <h2 className="text-lg font-bold mb-4">새 채팅방</h2>
-                <p className="mb-4">새 채팅방 모달이 구현되지 않았습니다.</p>
-                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
-            </div>
-        </div>
-    );
-};
-
+// 임시 모달 컴포넌트 - 실제 구현 시 수정 필요
 const NewVideoConferenceModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
     return (
@@ -56,30 +33,58 @@ export const TeamProjectSidebar: React.FC = () => {
     const { currentWorkspace } = useWorkspace();
   const navigate = useNavigate();
     const { workspaceId, teamId } = useParams<{ workspaceId: string; teamId: string; }>();
-  const location = useLocation();
-
-    const [teamProjects, setTeamProjects] = useState<Team[]>([]);
+  const location = useLocation();    const [teamProjects, setTeamProjects] = useState<Team[]>([]);
     const [isTeamCreateModalOpen, setIsTeamCreateModalOpen] = useState(false);
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
-  const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
+    const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
+    const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
+    const [isWorkspaceSettingsModalOpen, setIsWorkspaceSettingsModalOpen] = useState(false);
 
   useEffect(() => {
     if (currentWorkspace) {
-      teamApi.getTeams(currentWorkspace.id.toString())
-        .then(teams => {
-          setTeamProjects(teams);
-        })
-        .catch(error => {
-          console.error("팀 목록을 불러오는데 실패했습니다:", error);
-          setTeamProjects([]);
-        });
+      loadTeams();
     }
-  }, [currentWorkspace]);    const handleTeamCreated = (newTeam: Team) => {
-        setTeamProjects(prev => [...prev, newTeam]);
-        if (currentWorkspace) {
-            navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
-        }
+  }, [currentWorkspace]);
+
+  // 워크스페이스 홈으로 돌아왔을 때 팀 목록 갱신
+  useEffect(() => {
+    if (currentWorkspace && location.pathname === `/ws/${workspaceId}`) {
+      loadTeams();
+    }
+  }, [location.pathname, currentWorkspace, workspaceId]);
+
+  // 팀 생성 이벤트 리스닝
+  useEffect(() => {
+    const handleTeamCreated = (event: CustomEvent) => {
+      const newTeam = event.detail;
+      setTeamProjects(prev => [...prev, newTeam]);
     };
+
+    window.addEventListener('teamCreated', handleTeamCreated as EventListener);
+    
+    return () => {
+      window.removeEventListener('teamCreated', handleTeamCreated as EventListener);
+    };
+  }, []);
+
+  const loadTeams = () => {
+    if (!currentWorkspace) return;
+    
+    teamApi.getTeams(currentWorkspace.id.toString())
+      .then(teams => {
+        setTeamProjects(teams);
+      })
+      .catch(error => {
+        console.error("팀 목록을 불러오는데 실패했습니다:", error);
+        setTeamProjects([]);
+      });
+  };
+
+  const handleTeamCreated = (newTeam: Team) => {
+    setTeamProjects(prev => [...prev, newTeam]);
+    if (currentWorkspace) {
+      navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
+    }
+  };
 
     const isFeatureActive = (path: string) => location.pathname.includes(path);
 
@@ -91,13 +96,26 @@ export const TeamProjectSidebar: React.FC = () => {
 
   return (
         <>
-        <div className="bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 w-64 p-4 fixed top-16 left-16 h-[calc(100vh-4rem)] z-30 flex flex-col">
+        <div className="bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 w-64 p-4 fixed top-16 left-16 h-[calc(100vh-4rem)] z-30 flex flex-col">            
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold">{currentWorkspace?.name}</h2>
-                <Link to={`/ws/${workspaceId}/settings`}>
+                <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-neutral-200 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {currentWorkspace?.iconUrl ? (
+                            <img 
+                                src={currentWorkspace.iconUrl} 
+                                alt={`${currentWorkspace.name} 아이콘`} 
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <span className="text-sm text-neutral-500">📁</span>
+                        )}
+                    </div>
+                    <h2 className="text-lg font-bold truncate">{currentWorkspace?.name}</h2>
+                </div>
+                <button onClick={() => setIsWorkspaceSettingsModalOpen(true)}>
                     <CogIcon className="h-6 w-6 text-neutral-500 hover:text-neutral-800 dark:hover:text-white" />
-                </Link>
-      </div>
+                </button>
+            </div>
       
             <nav className="flex-grow overflow-y-auto">
                 {/* Team Projects */}
@@ -179,11 +197,14 @@ export const TeamProjectSidebar: React.FC = () => {
         <NewChatModal
             isOpen={isNewChatModalOpen}
             onClose={() => setIsNewChatModalOpen(false)}
-        />
-        <NewVideoConferenceModal
+        />        <NewVideoConferenceModal
             isOpen={isNewVideoConferenceModalOpen}
             onClose={() => setIsNewVideoConferenceModalOpen(false)}
         />
+        <WorkspaceSettingsModal
+            isOpen={isWorkspaceSettingsModalOpen}
+            onClose={() => setIsWorkspaceSettingsModalOpen(false)}
+        />
         </>
-  );
+    );
 }; 
