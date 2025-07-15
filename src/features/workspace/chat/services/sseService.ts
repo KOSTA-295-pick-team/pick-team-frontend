@@ -59,10 +59,10 @@ class SseService {
     try {
       console.log('🔐 SSE 등록 시작:', {
         timestamp: new Date().toISOString(),
-        url: '/api/sse/register'
+        url: '/sse/register'
       });
       
-      const response = await apiRequest('/api/sse/register', { method: 'POST' });
+      const response = await apiRequest('/sse/register', { method: 'POST' });
       
       console.log('🔐 SSE 등록 완료 응답:', {
         timestamp: new Date().toISOString(),
@@ -99,7 +99,7 @@ class SseService {
 
       // SSE 연결 with timeout 옵션
       // 504 에러 대응을 위해 더 짧은 타임아웃으로 빠른 재연결
-      const sseUrl = '/api/sse/subscribe';
+      const sseUrl = '/sse/subscribe';
       console.log('🔌 SSE 연결 시도:', sseUrl);
       console.log('🔌 현재 시간:', new Date().toISOString());
       
