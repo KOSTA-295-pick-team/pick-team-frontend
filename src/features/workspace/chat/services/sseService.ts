@@ -59,10 +59,10 @@ class SseService {
     try {
       console.log('🔐 SSE 등록 시작:', {
         timestamp: new Date().toISOString(),
-        url: '/api/sse/register'
+        url: '/sse/register'
       });
       
-      const response = await apiRequest('/api/sse/register', { method: 'POST' });
+      const response = await apiRequest('/sse/register', { method: 'POST' });
       
       console.log('🔐 SSE 등록 완료 응답:', {
         timestamp: new Date().toISOString(),
