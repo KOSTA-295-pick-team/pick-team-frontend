@@ -27,9 +27,31 @@ export const announcementApi = {
         if (teamId) {
             url += `?teamId=${teamId}`;
         }
-        // 백엔드 응답이 data 객체로 감싸져 있지 않을 수 있음을 가정
-        const response = await apiRequest<CustomApiResponse<Announcement[]>>(url);
-        return response.data || [];
+        try {
+            const response = await apiRequest<CustomApiResponse<any>>(url);
+            
+            // 백엔드가 페이징된 응답을 보내는 경우 처리
+            if (response.data && response.data.announcements) {
+                return Array.isArray(response.data.announcements) ? response.data.announcements : [];
+            }
+            
+            // 백엔드가 직접 배열을 보내는 경우 처리
+            if (Array.isArray(response.data)) {
+                return response.data;
+            }
+            
+            // 백엔드가 data 없이 직접 응답을 보내는 경우 처리
+            if (Array.isArray(response)) {
+                return response;
+            }
+            
+            // 모든 경우에 실패하면 빈 배열 반환
+            console.warn('예상하지 못한 API 응답 형식:', response);
+            return [];
+        } catch (error) {
+            console.error('공지사항 조회 API 오류:', error);
+            return [];
+        }
     },
 
     // 공지사항 생성

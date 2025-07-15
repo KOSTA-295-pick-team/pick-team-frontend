@@ -19,6 +19,7 @@ import TeamAnnouncementBoard from '@/features/teamspace/announcement/components/
 import TeamBulletinBoard from '@/features/teamspace/bulletin/components/TeamBulletinBoard';
 import TeamCalendar from '@/features/teamspace/schedule/components/TeamCalendar';
 import TeamKanbanBoard from '@/features/teamspace/kanban/components/TeamKanbanBoard';
+import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
 
 
 export const TeamSpacePage: React.FC = () => {
@@ -53,6 +54,10 @@ export const TeamSpacePage: React.FC = () => {
                 setLoading(true);
                 const teamData = await teamApi.getTeam(teamId);
                 const membersData = await teamApi.getMembers(teamId);
+                
+                // 디버깅용 로그
+                console.log('팀 데이터:', teamData);
+                console.log('bulletinBoardId:', teamData.bulletinBoardId);
                 
                 setTeam(teamData);
                 setTeamMembers(membersData);
@@ -93,19 +98,42 @@ export const TeamSpacePage: React.FC = () => {
     // 팀 설정 관련 상태
     const [showTeamSettingsDropdown, setShowTeamSettingsDropdown] = useState(false);
     const [showLeaveTeamModal, setShowLeaveTeamModal] = useState(false);
+    const [showDeleteTeamModal, setShowDeleteTeamModal] = useState(false);
+    
+    // 현재 사용자가 팀장인지 확인
+    const isTeamLeader = team?.leader?.id === currentUser?.id;
     
     // 팀 탈퇴 기능
     const handleLeaveTeam = useCallback(async () => {
         if (!team || !teamId || !currentUser) return;
-        if (window.confirm(`정말로 '${team.name}' 팀을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+        try {
+            await teamApi.leaveTeam(teamId);
+            alert("팀에서 성공적으로 탈퇴했습니다.");
+            navigate(`/ws/${workspaceId}`); // 워크스페이스 홈으로 이동
+        } catch (err) {
+            console.error("팀 탈퇴 실패:", err);
+            alert("팀 탈퇴에 실패했습니다.");
+        }
+    }, [team, teamId, navigate, workspaceId, currentUser]);
+
+    // 팀 삭제 기능
+    const handleDeleteTeam = useCallback(async () => {
+        if (!team || !teamId || !currentUser) return;
+        
+        const confirmText = `정말로 '${team.name}' 팀을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 팀의 모든 데이터(칸반보드, 게시판, 일정 등)가 함께 삭제됩니다.\n\n삭제하려면 '${team.name}'을 정확히 입력하세요.`;
+        
+        const userInput = prompt(confirmText);
+        if (userInput === team.name) {
             try {
-                await teamApi.leaveTeam(teamId);
-                alert("팀에서 성공적으로 탈퇴했습니다.");
+                await teamApi.deleteTeam(teamId);
+                alert("팀이 성공적으로 삭제되었습니다.");
                 navigate(`/ws/${workspaceId}`); // 워크스페이스 홈으로 이동
             } catch (err) {
-                console.error("팀 탈퇴 실패:", err);
-                alert("팀 탈퇴에 실패했습니다.");
+                console.error("팀 삭제 실패:", err);
+                alert("팀 삭제에 실패했습니다.");
             }
+        } else if (userInput !== null) {
+            alert("팀 이름이 일치하지 않습니다.");
         }
     }, [team, teamId, navigate, workspaceId, currentUser]);
 
@@ -156,7 +184,9 @@ export const TeamSpacePage: React.FC = () => {
             contentToRender = <TeamAnnouncementBoard teamId={teamId} workspaceId={workspaceId} currentUser={currentUser} />;
             break;
         case 'bulletin':
-            contentToRender = team.bulletinBoardId ? <TeamBulletinBoard teamProjectId={teamId} boardId={team.bulletinBoardId} currentUser={currentUser} /> : <p>게시판을 찾을 수 없습니다.</p>;
+            // 팀 정보에서 boardId 사용, 없으면 기본값 사용
+            const boardId = team.boardId || parseInt(teamId) || 1;
+            contentToRender = <TeamBulletinBoard teamProjectId={teamId} boardId={boardId} currentUser={currentUser} />;
             break;
         case 'calendar': 
             contentToRender = <TeamCalendar teamId={teamId} currentUser={currentUser} />; 
@@ -169,56 +199,66 @@ export const TeamSpacePage: React.FC = () => {
     }
 
     return (
-        <div className="space-y-6">
-            <header className="flex justify-between items-center pb-4 border-b">
-                <div>
-                    <h1 className="text-3xl font-bold">{team.name}</h1>
-                    <p className="text-neutral-500 mt-1">{team.description}</p>
-                </div>
-                <div className="relative">
-                    <Button variant="outline" onClick={() => setShowTeamSettingsDropdown(prev => !prev)} rightIcon={<CogIcon />}>
-                        팀 설정
-                    </Button>
-                    {showTeamSettingsDropdown && (
-                        <Card className="absolute top-full right-0 mt-2 w-48 z-20">
-                            <ul className="text-sm">
-                                <li>
-                                    <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleLeaveTeam}>
-                                        팀 탈퇴하기
-                                    </Button>
-                                </li>
-                            </ul>
-                        </Card>
-                    )}
-                </div>
-            </header>
+        <div className="flex">
+            <TeamProjectSidebar />
+            <div className="flex-1 ml-64 p-4 sm:p-6 lg:p-8 space-y-6">
+                <header className="flex justify-between items-center pb-4 border-b">
+                    <div>
+                        <h1 className="text-3xl font-bold">{team.name}</h1>
+                        <p className="text-neutral-500 mt-1">{team.description}</p>
+                    </div>
+                    <div className="relative">
+                        <Button variant="outline" onClick={() => setShowTeamSettingsDropdown(prev => !prev)} rightIcon={<CogIcon />}>
+                            팀 설정
+                        </Button>
+                        {showTeamSettingsDropdown && (
+                            <Card className="absolute top-full right-0 mt-2 w-48 z-20">
+                                <ul className="text-sm">
+                                    <li>
+                                        <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={() => setShowLeaveTeamModal(true)}>
+                                            팀 탈퇴하기
+                                        </Button>
+                                    </li>
+                                    {isTeamLeader && (
+                                        <li>
+                                            <Button variant="ghost" className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleDeleteTeam}>
+                                                팀 삭제하기
+                                            </Button>
+                                        </li>
+                                    )}
+                                </ul>
+                            </Card>
+                        )}
+                    </div>
+                </header>
 
-            <nav className="flex space-x-1 border-b">
-                <TabButton name="announcements" activeTab={activeTab} onClick={handleTabChange} icon={<ClipboardDocumentListIcon />}>공지사항</TabButton>
-                <TabButton name="bulletin" activeTab={activeTab} onClick={handleTabChange} icon={<ChatBubbleBottomCenterTextIcon />}>게시판</TabButton>
-                <TabButton name="kanban" activeTab={activeTab} onClick={handleTabChange} icon={<TableCellsIcon />}>칸반보드</TabButton>
-                <TabButton name="calendar" activeTab={activeTab} onClick={handleTabChange} icon={<CalendarDaysIcon />}>캘린더</TabButton>
-            </nav>
+                <nav className="flex space-x-1 border-b">
+                    <TabButton name="announcements" activeTab={activeTab} onClick={handleTabChange} icon={<ClipboardDocumentListIcon />}>공지사항</TabButton>
+                    <TabButton name="bulletin" activeTab={activeTab} onClick={handleTabChange} icon={<ChatBubbleBottomCenterTextIcon />}>게시판</TabButton>
+                    <TabButton name="kanban" activeTab={activeTab} onClick={handleTabChange} icon={<TableCellsIcon />}>칸반보드</TabButton>
+                    <TabButton name="calendar" activeTab={activeTab} onClick={handleTabChange} icon={<CalendarDaysIcon />}>캘린더</TabButton>
+                </nav>
 
-            <main>
-                {contentToRender}
-            </main>
-            
-            {showLeaveTeamModal && (
-              <Modal
-                isOpen={showLeaveTeamModal}
-                onClose={() => setShowLeaveTeamModal(false)}
-                title="팀 탈퇴 확인"
-                footer={
-                    <>
-                        <Button variant="ghost" onClick={() => setShowLeaveTeamModal(false)}>취소</Button>
-                        <Button variant="danger" onClick={handleLeaveTeam}>탈퇴 확인</Button>
-                    </>
-                }
-              >
-                  <p>정말로 '{team.name}' 팀을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
-              </Modal>
-            )}
+                <main>
+                    {contentToRender}
+                </main>
+                
+                {showLeaveTeamModal && (
+                  <Modal
+                    isOpen={showLeaveTeamModal}
+                    onClose={() => setShowLeaveTeamModal(false)}
+                    title="팀 탈퇴 확인"
+                    footer={
+                        <>
+                            <Button variant="ghost" onClick={() => setShowLeaveTeamModal(false)}>취소</Button>
+                            <Button variant="danger" onClick={handleLeaveTeam}>탈퇴 확인</Button>
+                        </>
+                    }
+                  >
+                      <p>정말로 '{team.name}' 팀을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
+                  </Modal>
+                )}
+            </div>
         </div>
     );
 };

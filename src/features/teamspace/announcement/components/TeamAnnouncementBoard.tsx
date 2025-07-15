@@ -18,15 +18,20 @@ const TeamAnnouncementBoard: React.FC<{
   const loadAnnouncements = useCallback(async () => {
     try {
       setIsLoading(true);
-      const data = await announcementApi.getAnnouncements(
-        workspaceId,
-        Number(teamId)
-      );
-      setAnnouncements(Array.isArray(data) ? data : []);
+      
+      const data = await announcementApi.getAnnouncements(workspaceId, Number(teamId));
+      
+      // 안전장치: 응답이 배열인지 확인하고, 아니면 빈 배열로 설정
+      if (Array.isArray(data)) {
+        setAnnouncements(data);
+      } else {
+        console.warn('공지사항 응답이 배열이 아닙니다:', data);
+        setAnnouncements([]);
+      }
     } catch (error) {
       console.error("공지사항 로딩 실패:", error);
-      // 에러 발생 시 빈 배열로 설정
-      setAnnouncements([]);
+      setAnnouncements([]); // 에러 발생 시 빈 배열로 설정
+      // 사용자에게 에러 알림 처리 (예: 토스트 메시지)
     } finally {
       setIsLoading(false);
     }
