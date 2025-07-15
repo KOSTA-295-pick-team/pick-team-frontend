@@ -167,14 +167,19 @@ export const ChatPage: React.FC = () => {
   const handleSendMessage = useCallback(async () => {
     if (!currentUser || !currentRoomId) return;
     if (newMessage.trim()) {
+      const messageContent = newMessage.trim();
+      
+      // 입력창을 먼저 비우고 포커스 유지
+      setNewMessage('');
+      setAttachedFile(null);
+      if(fileInputRef.current) fileInputRef.current.value = "";
+      
       try {
-        await sendMessage(currentRoomId, newMessage.trim());
-        setNewMessage('');
-        setAttachedFile(null);
-        if(fileInputRef.current) fileInputRef.current.value = "";
+        await sendMessage(currentRoomId, messageContent);
       } catch (error) {
         console.error('메시지 전송 실패:', error);
-        alert('메시지 전송에 실패했습니다.');
+        // 전송 실패 시 메시지를 복원하지 않음 (이미 임시 메시지로 표시됨)
+        alert('메시지 전송에 실패했습니다. 네트워크 연결을 확인해주세요.');
       }
     }
   }, [newMessage, currentUser, currentRoomId, sendMessage]);

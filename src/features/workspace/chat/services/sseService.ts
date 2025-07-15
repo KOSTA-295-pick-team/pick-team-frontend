@@ -46,22 +46,37 @@ class SseService {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private connectionHealthCheck: NodeJS.Timeout | null = null;
   private lastMessageTime = Date.now();
-  private maxIdleTime = 60000; // 60초 무응답 시 재연결
   
   // 메시지 큐 관리
   private messageQueue: Array<{ eventType: string; data: any; timestamp: number }> = [];
   private isProcessingQueue = false;
   private maxQueueSize = 1000; // 최대 큐 크기
-  private batchSize = 10; // 한 번에 처리할 메시지 수
-  private processingDelay = 10; // 배치 처리 간격 (ms)
+  private batchSize = 5; // 한 번에 처리할 메시지 수 (더 작게)
+  private processingDelay = 5; // 배치 처리 간격 (ms) - 더 빠르게
 
   // SSE 연결 등록 (Step 1)
   async register(): Promise<void> {
     try {
-      await apiRequest('/sse/register', { method: 'POST' });
-      console.log('SSE 등록 완료');
+      console.log('🔐 SSE 등록 시작:', {
+        timestamp: new Date().toISOString(),
+        url: '/api/sse/register'
+      });
+      
+      const response = await apiRequest('/api/sse/register', { method: 'POST' });
+      
+      console.log('🔐 SSE 등록 완료 응답:', {
+        timestamp: new Date().toISOString(),
+        response: response
+      });
+      
+      // 백엔드 타임아웃 대응: 등록 후 잠시 대기
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
-      console.error('SSE 등록 실패:', error);
+      console.error('🔐 SSE 등록 실패:', {
+        timestamp: new Date().toISOString(),
+        error: error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
       throw error;
     }
   }
@@ -69,19 +84,60 @@ class SseService {
   // SSE 연결 시작 (Step 2)
   async connect(): Promise<void> {
     if (this.isConnected || this.eventSource) {
-      console.log('이미 SSE에 연결되어 있습니다.');
+      console.log('⚠️ 이미 SSE에 연결되어 있습니다. 상태:', {
+        isConnected: this.isConnected,
+        readyState: this.eventSource?.readyState,
+        readyStateText: this.getReadyStateText()
+      });
       return;
     }
 
     try {
-      // 먼저 등록
+      // 백엔드 타임아웃 대응: 연결 시도마다 재등록
+      console.log('🔄 SSE 재등록 수행 중...');
       await this.register();
 
-      // SSE 연결
-      this.eventSource = new EventSource('/api/sse/subscribe');
+      // SSE 연결 with timeout 옵션
+      // 504 에러 대응을 위해 더 짧은 타임아웃으로 빠른 재연결
+      const sseUrl = '/api/sse/subscribe';
+      console.log('🔌 SSE 연결 시도:', sseUrl);
+      console.log('🔌 현재 시간:', new Date().toISOString());
+      
+      this.eventSource = new EventSource(sseUrl);
+      console.log('📡 EventSource 생성됨, 초기 상태:', {
+        readyState: this.eventSource.readyState,
+        readyStateText: this.getReadyStateText(),
+        url: this.eventSource.url,
+        withCredentials: this.eventSource.withCredentials
+      });
 
-      this.eventSource.onopen = () => {
-        console.log('✅ SSE 연결 성공');
+      // 백엔드 타임아웃에 맞춰 연결 타임아웃 단축 (5초)
+      const connectionTimeout = setTimeout(() => {
+        if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
+          console.log('⏰ SSE 연결 타임아웃 (5초), 재시도. 현재 상태:', {
+            readyState: this.eventSource.readyState,
+            readyStateText: this.getReadyStateText(),
+            url: this.eventSource.url,
+            withCredentials: this.eventSource.withCredentials,
+            timestamp: new Date().toISOString()
+          });
+          this.eventSource.close();
+          this.scheduleReconnect();
+        }
+      }, 5000);
+
+      this.eventSource.onopen = (event) => {
+        console.log('✅ SSE 연결 성공!', {
+          timestamp: new Date().toISOString(),
+          readyState: this.eventSource?.readyState,
+          readyStateText: this.getReadyStateText(),
+          event: event,
+          eventType: event.type,
+          target: event.target,
+          timeStamp: event.timeStamp,
+          url: this.eventSource?.url
+        });
+        clearTimeout(connectionTimeout); // 타임아웃 해제
         this.isConnected = true;
         this.reconnectAttempts = 0; // 성공시 재연결 시도 횟수 리셋
         this.lastMessageTime = Date.now(); // 마지막 메시지 시간 업데이트
@@ -90,29 +146,46 @@ class SseService {
       };
 
       this.eventSource.onerror = (error) => {
-        console.error('❌ SSE 연결 오류:', error);
-        console.log('SSE 연결 상태:', this.eventSource?.readyState);
+        console.error('❌ SSE 연결 오류 상세:', {
+          error: error,
+          timestamp: new Date().toISOString(),
+          readyState: this.eventSource?.readyState,
+          readyStateText: this.getReadyStateText(),
+          url: this.eventSource?.url,
+          isConnected: this.isConnected,
+          errorType: error.type,
+          target: error.target,
+          timeStamp: error.timeStamp,
+          message: (error as any).message || 'No error message'
+        });
+        clearTimeout(connectionTimeout); // 타임아웃 해제
         this.isConnected = false;
         this.stopHeartbeat();
         this.stopConnectionHealthCheck();
         
-        // 연결이 끊어진 경우에만 재연결 시도
-        if (this.eventSource?.readyState === EventSource.CLOSED) {
-          console.log('🔄 연결이 완전히 끊어짐, 재연결 스케줄');
-          this.scheduleReconnect();
-        } else if (this.eventSource?.readyState === EventSource.CONNECTING) {
-          console.log('⚠️ 연결 시도 중...');
-        }
+        // 백엔드 타임아웃 대응: 모든 오류에 대해 빠른 재연결
+        console.log('🔄 SSE 오류 발생, 즉시 재연결 스케줄');
+        this.scheduleReconnect();
       };
 
       this.eventSource.onmessage = (event) => {
         try {
           this.lastMessageTime = Date.now(); // 메시지 수신 시간 업데이트
           const data = JSON.parse(event.data);
-          console.log('📨 SSE 메시지 수신:', data);
+          console.log('📨 SSE 메시지 수신 상세:', {
+            timestamp: new Date().toISOString(),
+            data: data,
+            rawEvent: event,
+            origin: event.origin,
+            lastEventId: event.lastEventId
+          });
           this.handleSseEvent(data);
         } catch (error) {
-          console.error('SSE 메시지 파싱 오류:', error);
+          console.error('SSE 메시지 파싱 오류:', {
+            error: error,
+            rawData: event.data,
+            event: event
+          });
         }
       };
 
@@ -123,6 +196,18 @@ class SseService {
       console.error('SSE 연결 실패:', error);
       this.scheduleReconnect();
       throw error;
+    }
+  }
+
+  // ReadyState 텍스트 변환 헬퍼
+  private getReadyStateText(): string {
+    if (!this.eventSource) return 'NO_EVENT_SOURCE';
+    
+    switch (this.eventSource.readyState) {
+      case EventSource.CONNECTING: return 'CONNECTING (0)';
+      case EventSource.OPEN: return 'OPEN (1)';
+      case EventSource.CLOSED: return 'CLOSED (2)';
+      default: return `UNKNOWN (${this.eventSource.readyState})`;
     }
   }
 
@@ -210,29 +295,31 @@ class SseService {
 
     this.isProcessingQueue = true;
 
-    while (this.messageQueue.length > 0) {
-      const batch = this.messageQueue.splice(0, this.batchSize);
-      console.log(`🔄 배치 처리 시작: ${batch.length}개 메시지`);
+    try {
+      while (this.messageQueue.length > 0) {
+        const batch = this.messageQueue.splice(0, this.batchSize);
+        console.log(`🔄 배치 처리 시작: ${batch.length}개 메시지`);
 
-      // 배치 내 메시지들을 병렬 처리
-      const promises = batch.map(async (message) => {
-        try {
-          await this.notifyListeners(message.eventType, message.data);
-        } catch (error) {
-          console.error(`❌ 메시지 처리 오류 (${message.eventType}):`, error);
+        // 배치 내 메시지들을 순차 처리로 변경 (안정성 향상)
+        for (const message of batch) {
+          try {
+            await this.notifyListeners(message.eventType, message.data);
+          } catch (error) {
+            console.error(`❌ 메시지 처리 오류 (${message.eventType}):`, error);
+          }
         }
-      });
 
-      await Promise.all(promises);
-
-      // 다음 배치 처리 전 잠시 대기 (UI 블로킹 방지)
-      if (this.messageQueue.length > 0) {
-        await new Promise(resolve => setTimeout(resolve, this.processingDelay));
+        // 다음 배치 처리 전 잠시 대기 (UI 블로킹 방지)
+        if (this.messageQueue.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, this.processingDelay));
+        }
       }
+    } catch (error) {
+      console.error('❌ 메시지 큐 처리 중 오류:', error);
+    } finally {
+      this.isProcessingQueue = false;
+      console.log('✅ 메시지 큐 처리 완료');
     }
-
-    this.isProcessingQueue = false;
-    console.log('✅ 메시지 큐 처리 완료');
   }
 
   // 리스너들에게 이벤트 알림 (비동기 처리)
@@ -292,7 +379,38 @@ class SseService {
 
   // 연결 상태 확인
   isEventSourceConnected(): boolean {
-    return this.isConnected && this.eventSource?.readyState === EventSource.OPEN;
+    const connected = this.isConnected && this.eventSource?.readyState === EventSource.OPEN;
+    
+    // 연결 상태 불일치 감지
+    if (this.isConnected && this.eventSource?.readyState !== EventSource.OPEN) {
+      console.warn('⚠️ 연결 상태 불일치 감지:', {
+        isConnected: this.isConnected,
+        readyState: this.eventSource?.readyState,
+        readyStateText: this.getReadyStateText(),
+        shouldReconnect: true
+      });
+      
+      // 상태 동기화
+      this.isConnected = false;
+      return false;
+    }
+    
+    return connected;
+  }
+
+  // 연결 상태 진단
+  getConnectionStatus(): any {
+    return {
+      isConnected: this.isConnected,
+      hasEventSource: !!this.eventSource,
+      readyState: this.eventSource?.readyState,
+      readyStateText: this.getReadyStateText(),
+      url: this.eventSource?.url,
+      lastMessageTime: new Date(this.lastMessageTime).toISOString(),
+      timeSinceLastMessage: Date.now() - this.lastMessageTime,
+      reconnectAttempts: this.reconnectAttempts,
+      isReconnectScheduled: !!this.reconnectTimeout
+    };
   }
 
   // 하트비트 시작 (연결 상태 모니터링)
@@ -300,11 +418,14 @@ class SseService {
     this.stopHeartbeat(); // 기존 하트비트 중지
     
     this.heartbeatInterval = setInterval(() => {
+      const status = this.getConnectionStatus();
+      console.log('💓 하트비트 체크:', status);
+      
       if (!this.isEventSourceConnected()) {
         console.log('💔 SSE 연결 끊어짐 감지, 재연결 시도');
         this.scheduleReconnect();
       }
-    }, 15000); // 15초마다 연결 상태 체크 (더 빈번하게)
+    }, 4000); // 4초마다 연결 상태 체크 (백엔드 6초 타임아웃 대응)
   }
 
   // 하트비트 중지
@@ -312,6 +433,7 @@ class SseService {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+      console.log('💓 하트비트 중지됨');
     }
   }
 
@@ -321,9 +443,15 @@ class SseService {
     
     this.connectionHealthCheck = setInterval(() => {
       const timeSinceLastMessage = Date.now() - this.lastMessageTime;
+      const status = this.getConnectionStatus();
       
-      // 60초 이상 메시지가 없으면 연결 상태 의심
-      if (timeSinceLastMessage > this.maxIdleTime) {
+      console.log('🔍 연결 건강성 체크:', {
+        ...status,
+        timeSinceLastMessage: Math.round(timeSinceLastMessage / 1000) + 's'
+      });
+      
+      // 백엔드 타임아웃 대응을 위해 더 짧은 간격으로 체크 (10초)
+      if (timeSinceLastMessage > 10000) {
         console.log(`⚠️ ${Math.round(timeSinceLastMessage/1000)}초간 메시지 없음, 연결 품질 체크`);
         
         // EventSource 상태를 다시 확인
@@ -331,12 +459,14 @@ class SseService {
           console.log('💔 EventSource 상태 이상 감지, 재연결 시도');
           this.scheduleReconnect();
         } else {
-          // 연결은 살아있지만 메시지가 오지 않는 경우
-          console.log('🔄 연결은 살아있지만 비정상적으로 조용함, 예방적 재연결');
-          this.scheduleReconnect();
+          // 15초가 넘으면 예방적 재연결 (백엔드 타임아웃보다 짧게)
+          if (timeSinceLastMessage > 15000) {
+            console.log('🔄 15초 이상 무응답, 예방적 재연결');
+            this.scheduleReconnect();
+          }
         }
       }
-    }, 30000); // 30초마다 건강성 체크
+    }, 3000); // 3초마다 건강성 체크 (더 빈번하게)
   }
 
   // 연결 건강성 체크 중지
@@ -344,6 +474,7 @@ class SseService {
     if (this.connectionHealthCheck) {
       clearInterval(this.connectionHealthCheck);
       this.connectionHealthCheck = null;
+      console.log('🔍 연결 건강성 체크 중지됨');
     }
   }
 
@@ -360,8 +491,16 @@ class SseService {
     }
 
     this.reconnectAttempts++;
-    // 더 빠른 재연결을 위해 지연 시간 단축
-    const delay = Math.min(500 * Math.pow(1.5, this.reconnectAttempts), 10000); // 최대 10초
+    
+    // 백엔드 6초 타임아웃 대응을 위해 매우 빠른 재연결
+    let delay;
+    if (this.reconnectAttempts <= 5) {
+      // 처음 5번은 매우 빠르게 재시도 (500ms, 1초, 1.5초, 2초, 2.5초)
+      delay = 500 * this.reconnectAttempts;
+    } else {
+      // 그 이후는 조금 더 긴 간격 (최대 8초)
+      delay = Math.min(3000 + (this.reconnectAttempts - 5) * 1000, 8000);
+    }
     
     console.log(`🔄 SSE 재연결 스케줄 (${this.reconnectAttempts}/${this.maxReconnectAttempts}) - ${delay}ms 후`);
     
@@ -436,3 +575,52 @@ class SseService {
 
 // 싱글톤 인스턴스
 export const sseService = new SseService();
+
+// 전역에서 SSE 상태 확인 가능
+(window as any).debugSSE = () => {
+  console.log('🔍 SSE 전역 디버그 정보:', sseService.getConnectionStatus());
+  
+  // 네트워크 요청 모니터링 활성화
+  console.log('🌐 네트워크 모니터링 활성화 중...');
+  
+  // Performance API로 네트워크 요청 추적
+  const entries = performance.getEntriesByType('navigation').concat(
+    performance.getEntriesByType('resource')
+  );
+  
+  const sseEntries = entries.filter(entry => 
+    entry.name.includes('/sse/') || 
+    entry.name.includes('/api/sse/')
+  );
+  
+  console.log('📊 SSE 관련 네트워크 요청:', sseEntries);
+  
+  return {
+    sseStatus: sseService.getConnectionStatus(),
+    networkEntries: sseEntries,
+    timestamp: new Date().toISOString()
+  };
+};
+
+// 네트워크 요청 실시간 모니터링
+(window as any).monitorSSENetwork = () => {
+  const observer = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (entry.name.includes('/sse/') || entry.name.includes('/api/sse/')) {
+        console.log('🌐 SSE 네트워크 요청 감지:', {
+          name: entry.name,
+          startTime: entry.startTime,
+          duration: entry.duration,
+          transferSize: (entry as any).transferSize,
+          responseStatus: (entry as any).responseStatus,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  });
+  
+  observer.observe({ entryTypes: ['resource'] });
+  console.log('🔍 SSE 네트워크 모니터링 시작됨');
+  
+  return observer;
+};

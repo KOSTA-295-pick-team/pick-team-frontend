@@ -89,15 +89,41 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const existingMessages = state.messages[action.payload.chatRoomId] || [];
       const newMessage = action.payload.message;
       
-      // 빠른 중복 검사 (ID 기반)
-      const messageExists = existingMessages.some(msg => msg.id === newMessage.id);
+      // 임시 메시지 처리: 음수 ID는 임시 메시지, 양수 ID는 실제 메시지
+      const isTemporaryMessage = newMessage.id < 0;
+      const isRealMessage = newMessage.id > 0;
       
-      if (messageExists) {
-        console.log('🚫 중복 메시지 무시:', newMessage.id, '채팅방:', action.payload.chatRoomId);
-        return state;
+      // 실제 메시지가 오면 임시 메시지들을 제거
+      if (isRealMessage) {
+        // 같은 내용의 임시 메시지가 있는지 확인 (최근 10초 이내)
+        const recentTempMessages = existingMessages.filter(msg => 
+          msg.id < 0 && 
+          msg.text === newMessage.text &&
+          msg.userId === newMessage.userId &&
+          (Date.now() - msg.timestamp.getTime()) < 10000 // 10초 이내
+        );
+        
+        if (recentTempMessages.length > 0) {
+          console.log('🔄 실제 메시지 수신으로 임시 메시지 제거:', recentTempMessages.map(m => m.id));
+          // 임시 메시지들 제거
+          const withoutTempMessages = existingMessages.filter(msg => 
+            !recentTempMessages.some(temp => temp.id === msg.id)
+          );
+          existingMessages.splice(0, existingMessages.length, ...withoutTempMessages);
+        }
       }
       
-      console.log('✅ 새 메시지 추가:', newMessage.id, '채팅방:', action.payload.chatRoomId);
+      // 빠른 중복 검사 (ID 기반) - 실제 메시지만 체크
+      if (isRealMessage) {
+        const messageExists = existingMessages.some(msg => msg.id === newMessage.id);
+        
+        if (messageExists) {
+          console.log('🚫 중복 메시지 무시:', newMessage.id, '채팅방:', action.payload.chatRoomId);
+          return state;
+        }
+      }
+      
+      console.log('✅ 새 메시지 추가:', newMessage.id, '채팅방:', action.payload.chatRoomId, '임시 메시지:', isTemporaryMessage);
       
       // 성능 최적화: 새 메시지가 최신인 경우 끝에 바로 추가
       const lastMessage = existingMessages[existingMessages.length - 1];
@@ -122,14 +148,22 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         }
         
         updatedMessages.splice(insertIndex, 0, newMessage);
-        console.log('� 시간순 정렬로 메시지 삽입, 위치:', insertIndex);
+        console.log('🔀 시간순 정렬로 메시지 삽입, 위치:', insertIndex);
       }
       
-      // 메모리 관리: 메시지가 너무 많으면 오래된 메시지 제거
+      // 메모리 관리: 메시지가 너무 많으면 오래된 메시지 제거 (임시 메시지 제외)
       const maxMessages = 1000;
       if (updatedMessages.length > maxMessages) {
-        updatedMessages = updatedMessages.slice(-maxMessages);
-        console.log(`📝 메시지 수 제한으로 오래된 메시지 제거, 현재: ${updatedMessages.length}`);
+        // 임시 메시지는 보존하고 오래된 실제 메시지만 제거
+        const realMessages = updatedMessages.filter(msg => msg.id > 0);
+        const tempMessages = updatedMessages.filter(msg => msg.id < 0);
+        
+        if (realMessages.length > maxMessages - tempMessages.length) {
+          const trimmedRealMessages = realMessages.slice(-(maxMessages - tempMessages.length));
+          updatedMessages = [...trimmedRealMessages, ...tempMessages]
+            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+          console.log(`📝 메시지 수 제한으로 오래된 메시지 제거, 현재: ${updatedMessages.length}`);
+        }
       }
       
       return {
@@ -178,6 +212,68 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let connectionRetryCount = 0;
     const maxRetries = 5; // 재시도 횟수 증가
     let connectionStabilityTimer: NodeJS.Timeout | null = null;
+    let fallbackSyncTimer: NodeJS.Timeout | null = null; // 504 에러 대응용 주기적 동기화
+
+    // 504 에러 환경을 위한 주기적 메시지 동기화
+    const startFallbackSync = () => {
+      if (fallbackSyncTimer) {
+        clearInterval(fallbackSyncTimer);
+      }
+      
+      fallbackSyncTimer = setInterval(async () => {
+        // SSE 연결이 불안정하거나 끊어진 경우에만 동작
+        if (!sseService.isEventSourceConnected()) {
+          console.log('🔄 [FallbackSync] SSE 연결 불안정, 주기적 메시지 동기화 실행');
+          
+          // 현재 활성화된 채팅방이 있으면 메시지 동기화
+          if (state.currentChatRoom) {
+            try {
+              const latestMessages = await chatApi.getChatMessages(parseInt(currentWorkspace.id), state.currentChatRoom.id, 0, 30);
+              const currentMessages = state.messages[state.currentChatRoom.id] || [];
+              const latestRealMessages = latestMessages.messages || [];
+              
+              const newMessages = latestRealMessages.filter(apiMsg => 
+                !currentMessages.some(localMsg => localMsg.id === apiMsg.id && localMsg.id > 0)
+              );
+              
+              if (newMessages.length > 0) {
+                console.log(`🔄 [FallbackSync] ${newMessages.length}개의 누락된 메시지 동기화`);
+                
+                newMessages.forEach(apiMsg => {
+                  let correctedSenderName = apiMsg.senderName;
+                  if ((!apiMsg.senderName || apiMsg.senderName === '알 수 없는 사용자') && currentWorkspace?.members) {
+                    const member = currentWorkspace.members.find(m => m.id === apiMsg.senderId);
+                    if (member?.name) {
+                      correctedSenderName = member.name;
+                    }
+                  }
+                  
+                  const syncMessage: ChatMessage = {
+                    id: apiMsg.id,
+                    roomId: apiMsg.chatRoomId,
+                    userId: apiMsg.senderId,
+                    userName: correctedSenderName,
+                    text: apiMsg.content,
+                    timestamp: apiMsg.sentAt ? new Date(apiMsg.sentAt) : 
+                              apiMsg.createdAt ? new Date(apiMsg.createdAt) : new Date(),
+                    createdAt: apiMsg.sentAt || apiMsg.createdAt || new Date().toISOString(),
+                    senderName: correctedSenderName,
+                    senderProfilePictureUrl: apiMsg.senderProfileImageUrl,
+                  };
+                  
+                  dispatch({ 
+                    type: 'ADD_MESSAGE', 
+                    payload: { chatRoomId: state.currentChatRoom!.id, message: syncMessage }
+                  });
+                });
+              }
+            } catch (syncError) {
+              console.error('❌ [FallbackSync] 주기적 동기화 실패:', syncError);
+            }
+          }
+        }
+      }, 12000); // 12초마다 동기화 체크 (백엔드 타임아웃 대응)
+    };
 
     const connectSse = async () => {
       if (isConnecting) {
@@ -229,6 +325,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             connectSse();
           }
         }, 10000); // 10초마다 연결 상태 체크
+
+        // 504 에러 대응: 주기적 폴백 동기화 시작
+        startFallbackSync();
 
         // 새 메시지 이벤트 리스너 (성능 최적화)
         sseService.addEventListener('NEW_CHAT_MESSAGE', (data) => {
@@ -325,6 +424,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         connectionStabilityTimer = null;
       }
       
+      // 폴백 동기화 타이머 정리
+      if (fallbackSyncTimer) {
+        clearInterval(fallbackSyncTimer);
+        fallbackSyncTimer = null;
+      }
+      
       if (isConnected) {
         console.log('🔌 SSE 연결 해제 중...');
         sseService.disconnect();
@@ -334,7 +439,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('ℹ️ SSE 연결이 없어서 해제 건너뜀');
       }
     };
-  }, [currentUser?.id, currentWorkspace?.id]);
+  }, [currentUser?.id, currentWorkspace?.id, state.currentChatRoom]);
 
   // 채팅방 목록 로드
   const loadChatRooms = useCallback(async () => {
@@ -535,6 +640,29 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const maxRetries = 3;
     let retryCount = 0;
 
+    // 임시 메시지 ID 생성 (실제 메시지가 오면 대체됨)
+    const tempMessageId = -Math.abs(Date.now() + Math.floor(Math.random() * 1000)); // 음수로 임시 ID 생성
+    
+    // 즉시 UI 업데이트를 위한 임시 메시지 생성
+    const tempMessage: ChatMessage = {
+      id: tempMessageId, // 음수 임시 ID 사용
+      roomId: chatRoomId,
+      userId: parseInt(currentUser.id.toString()),
+      userName: currentUser.name,
+      text: content.trim(),
+      timestamp: new Date(),
+      createdAt: new Date().toISOString(),
+      senderName: currentUser.name,
+      senderProfilePictureUrl: undefined,
+    };
+
+    // 즉시 UI에 임시 메시지 추가 (낙관적 업데이트)
+    console.log('📱 임시 메시지 즉시 UI 추가:', tempMessage);
+    dispatch({ 
+      type: 'ADD_MESSAGE', 
+      payload: { chatRoomId, message: tempMessage }
+    });
+
     const attemptSend = async (): Promise<void> => {
       try {
         const request = {
@@ -546,23 +674,190 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log(`📤 메시지 전송 시도 (${retryCount + 1}/${maxRetries + 1}):`, request);
         
         // 메시지 전송 API 호출
-        await chatApi.sendMessage(parseInt(currentWorkspace.id), chatRoomId, request);
-        console.log('✅ 메시지 전송 성공 - SSE를 통해 실시간 업데이트 예정');
+        const response = await chatApi.sendMessage(parseInt(currentWorkspace.id), chatRoomId, request);
+        console.log('✅ 메시지 전송 성공 - 응답:', response);
         
-        // SSE를 통해 자동으로 새 메시지가 추가되므로 별도로 메시지 목록을 다시 로드하지 않음
-      } catch (error) {
-        console.error(`❌ 메시지 전송 실패 (시도 ${retryCount + 1}/${maxRetries + 1}):`, error);
+        // API 응답이 있는 경우 임시 메시지를 실제 메시지로 교체
+        if (response && response.id) {
+          const realMessage: ChatMessage = {
+            id: response.id,
+            roomId: response.chatRoomId || chatRoomId,
+            userId: response.senderId || parseInt(currentUser.id.toString()),
+            userName: response.senderName || currentUser.name,
+            text: response.content || content.trim(),
+            timestamp: response.sentAt ? new Date(response.sentAt) : 
+                      response.createdAt ? new Date(response.createdAt) : new Date(),
+            createdAt: response.sentAt || response.createdAt || new Date().toISOString(),
+            senderName: response.senderName || currentUser.name,
+            senderProfilePictureUrl: response.senderProfileImageUrl,
+          };
+
+          // 임시 메시지를 실제 메시지로 교체
+          console.log('🔄 임시 메시지를 실제 메시지로 교체:', { tempMessageId, realMessage });
+          
+          dispatch({ 
+            type: 'ADD_MESSAGE', 
+            payload: { chatRoomId, message: realMessage }
+          });
+        } else {
+          // API 응답이 없으면 임시 메시지를 실제 메시지로 간주
+          console.log('⚠️ API 응답 없음, 임시 메시지를 유지');
+          const permanentMessage: ChatMessage = {
+            ...tempMessage,
+            id: Date.now(), // 양수 ID로 변환
+          };
+          
+          const currentMessages = state.messages[chatRoomId] || [];
+          const updatedMessages = currentMessages
+            .filter(msg => msg.id !== tempMessageId) // 임시 메시지 제거
+            .concat([permanentMessage]) // 영구 메시지 추가
+            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()); // 시간순 정렬
+          
+          dispatch({ 
+            type: 'SET_MESSAGES', 
+            payload: { chatRoomId, messages: updatedMessages }
+          });
+        }
         
-        // SSE 연결 상태 확인
+        // SSE 연결 상태 확인 및 재연결 시도
         if (!sseService.isEventSourceConnected()) {
-          console.log('🔄 SSE 연결이 끊어져서 재연결을 시도합니다.');
+          console.log('⚠️ SSE 연결이 끊어진 상태, 재연결 시도');
           try {
             await sseService.connect();
             console.log('✅ SSE 재연결 성공');
           } catch (reconnectError) {
             console.error('❌ SSE 재연결 실패:', reconnectError);
+            // SSE 재연결에 실패해도 메시지 전송은 성공했으므로 계속 진행
           }
         }
+        
+        // SSE 연결이 불안정한 경우를 대비한 폴백 메커니즘
+        // 504 에러가 빈번한 환경에서는 더 짧은 간격으로 폴백 체크
+        setTimeout(async () => {
+          try {
+            console.log('🔄 SSE 폴백: 메시지 목록 재로드 확인 (1차)');
+            const latestMessages = await chatApi.getChatMessages(parseInt(currentWorkspace.id), chatRoomId, 0, 20);
+            
+            // 최신 메시지들과 현재 메시지들 비교
+            const currentMessagesState = state.messages[chatRoomId] || [];
+            const latestRealMessages = latestMessages.messages || [];
+            
+            // 새로운 실제 메시지가 있는지 확인
+            const newRealMessages = latestRealMessages.filter(apiMsg => 
+              !currentMessagesState.some(localMsg => 
+                localMsg.id === apiMsg.id && localMsg.id > 0 // 실제 메시지만 비교
+              )
+            );
+            
+            if (newRealMessages.length > 0) {
+              console.log(`🔄 폴백으로 ${newRealMessages.length}개의 누락된 메시지 발견`);
+              
+              newRealMessages.forEach(apiMsg => {
+                let correctedSenderName = apiMsg.senderName;
+                if ((!apiMsg.senderName || apiMsg.senderName === '알 수 없는 사용자') && currentWorkspace?.members) {
+                  const member = currentWorkspace.members.find(m => m.id === apiMsg.senderId);
+                  if (member?.name) {
+                    correctedSenderName = member.name;
+                  }
+                }
+                
+                const fallbackMessage: ChatMessage = {
+                  id: apiMsg.id,
+                  roomId: apiMsg.chatRoomId,
+                  userId: apiMsg.senderId,
+                  userName: correctedSenderName,
+                  text: apiMsg.content,
+                  timestamp: apiMsg.sentAt ? new Date(apiMsg.sentAt) : 
+                            apiMsg.createdAt ? new Date(apiMsg.createdAt) : new Date(),
+                  createdAt: apiMsg.sentAt || apiMsg.createdAt || new Date().toISOString(),
+                  senderName: correctedSenderName,
+                  senderProfilePictureUrl: apiMsg.senderProfileImageUrl,
+                };
+                
+                dispatch({ 
+                  type: 'ADD_MESSAGE', 
+                  payload: { chatRoomId, message: fallbackMessage }
+                });
+              });
+            }
+          } catch (fallbackError) {
+            console.error('❌ 1차 폴백 메시지 로드 실패:', fallbackError);
+          }
+        }, 1000); // 1초 후 1차 폴백 (백엔드 타임아웃 대응)
+        
+        // 백엔드 타임아웃 환경을 위한 2차 폴백 (더 짧은 간격)
+        setTimeout(async () => {
+          try {
+            // SSE 연결 상태 재확인
+            if (!sseService.isEventSourceConnected()) {
+              console.log('🔄 SSE 폴백: 2차 메시지 동기화 확인');
+              const latestMessages = await chatApi.getChatMessages(parseInt(currentWorkspace.id), chatRoomId, 0, 50);
+              
+              const currentMessagesState = state.messages[chatRoomId] || [];
+              const latestRealMessages = latestMessages.messages || [];
+              
+              // 더 넓은 범위로 누락된 메시지 확인
+              const newRealMessages = latestRealMessages.filter(apiMsg => 
+                !currentMessagesState.some(localMsg => 
+                  localMsg.id === apiMsg.id && localMsg.id > 0
+                )
+              );
+              
+              if (newRealMessages.length > 0) {
+                console.log(`🔄 2차 폴백으로 ${newRealMessages.length}개의 추가 누락 메시지 발견`);
+                
+                newRealMessages.forEach(apiMsg => {
+                  let correctedSenderName = apiMsg.senderName;
+                  if ((!apiMsg.senderName || apiMsg.senderName === '알 수 없는 사용자') && currentWorkspace?.members) {
+                    const member = currentWorkspace.members.find(m => m.id === apiMsg.senderId);
+                    if (member?.name) {
+                      correctedSenderName = member.name;
+                    }
+                  }
+                  
+                  const fallbackMessage: ChatMessage = {
+                    id: apiMsg.id,
+                    roomId: apiMsg.chatRoomId,
+                    userId: apiMsg.senderId,
+                    userName: correctedSenderName,
+                    text: apiMsg.content,
+                    timestamp: apiMsg.sentAt ? new Date(apiMsg.sentAt) : 
+                              apiMsg.createdAt ? new Date(apiMsg.createdAt) : new Date(),
+                    createdAt: apiMsg.sentAt || apiMsg.createdAt || new Date().toISOString(),
+                    senderName: correctedSenderName,
+                    senderProfilePictureUrl: apiMsg.senderProfileImageUrl,
+                  };
+                  
+                  dispatch({ 
+                    type: 'ADD_MESSAGE', 
+                    payload: { chatRoomId, message: fallbackMessage }
+                  });
+                });
+              }
+            }
+          } catch (fallbackError) {
+            console.error('❌ 2차 폴백 메시지 로드 실패:', fallbackError);
+          }
+        }, 5000); // 5초 후 2차 폴백 (백엔드 타임아웃 대응)
+        
+      } catch (error) {
+        console.error(`❌ 메시지 전송 실패 (시도 ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // 전송 실패 시 임시 메시지를 오류 표시로 변경
+        const errorMessage: ChatMessage = {
+          ...tempMessage,
+          text: `❌ 전송 실패: ${tempMessage.text}`,
+          senderName: `${currentUser.name} (전송 실패)`,
+        };
+        
+        const currentMessages = state.messages[chatRoomId] || [];
+        const updatedMessages = currentMessages
+          .map(msg => msg.id === tempMessageId ? errorMessage : msg);
+        
+        dispatch({ 
+          type: 'SET_MESSAGES', 
+          payload: { chatRoomId, messages: updatedMessages }
+        });
         
         // 네트워크 오류나 일시적 오류인 경우 재시도
         if (retryCount < maxRetries && 
@@ -582,7 +877,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return attemptSend();
-  }, [currentUser, currentWorkspace]);
+  }, [currentUser, currentWorkspace, state.messages]);
 
   // 채팅방 생성
   const createChatRoom = useCallback(async (name: string, memberIds: number[], type: 'PERSONAL' | 'GROUP'): Promise<ChatRoom> => {
