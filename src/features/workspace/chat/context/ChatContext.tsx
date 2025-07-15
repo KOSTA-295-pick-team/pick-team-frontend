@@ -333,12 +333,36 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sseService.addEventListener('NEW_CHAT_MESSAGE', (data) => {
           try {
             const timestamp = Date.now();
-            console.log(`🔔 [${new Date(timestamp).toISOString()}] 새 메시지 수신:`, data);
+            console.log(`🔔 [${new Date(timestamp).toISOString()}] 새 메시지 SSE 수신:`, data);
             
             // 데이터 유효성 검사 (빠른 실패)
             if (!data?.messageId || !data?.chatRoomId || !data?.content) {
-              console.error('❌ 유효하지 않은 메시지 데이터:', data);
+              console.error('❌ 유효하지 않은 SSE 메시지 데이터:', data);
               return;
+            }
+            
+            // 현재 사용자가 보낸 메시지인지 확인
+            const isOwnMessage = data.senderId === parseInt(currentUser.id.toString());
+            
+            // 자신이 보낸 메시지의 경우 임시 메시지가 이미 있을 수 있으므로 신중하게 처리
+            if (isOwnMessage) {
+              console.log('🔄 자신이 보낸 메시지 SSE 수신, 임시 메시지 확인 중...');
+              const currentMessages = state.messages[data.chatRoomId] || [];
+              
+              // 같은 내용의 임시 메시지가 최근에 있는지 확인 (최근 30초 이내)
+              const recentTempMessage = currentMessages.find(msg => 
+                msg.id < 0 && 
+                msg.text === data.content &&
+                msg.userId === data.senderId &&
+                (timestamp - msg.timestamp.getTime()) < 30000 // 30초 이내
+              );
+              
+              if (recentTempMessage) {
+                console.log('🔄 임시 메시지를 실제 메시지로 교체:', {
+                  tempId: recentTempMessage.id,
+                  realId: data.messageId
+                });
+              }
             }
             
             // 워크스페이스 멤버 정보에서 발신자 이름 찾기 (캐시된 데이터 사용)
@@ -376,7 +400,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             
           } catch (error) {
-            console.error('❌ 새 메시지 처리 중 오류:', error);
+            console.error('❌ 새 메시지 SSE 처리 중 오류:', error);
             // 에러가 발생해도 SSE 연결을 유지
           }
         });
@@ -843,11 +867,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (error) {
         console.error(`❌ 메시지 전송 실패 (시도 ${retryCount + 1}/${maxRetries + 1}):`, error);
         
-        // 전송 실패 시 임시 메시지를 오류 표시로 변경
+        // 전송 실패 시 임시 메시지를 오류 표시로 변경하되, 사용자에게 더 친화적인 메시지 제공
         const errorMessage: ChatMessage = {
           ...tempMessage,
-          text: `❌ 전송 실패: ${tempMessage.text}`,
-          senderName: `${currentUser.name} (전송 실패)`,
+          text: `⚠️ 메시지 전송 실패: "${tempMessage.text.substring(0, 50)}${tempMessage.text.length > 50 ? '...' : ''}"`,
+          senderName: `${currentUser.name} (전송 실패 - 다시 시도하세요)`,
         };
         
         const currentMessages = state.messages[chatRoomId] || [];
@@ -859,19 +883,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           payload: { chatRoomId, messages: updatedMessages }
         });
         
-        // 네트워크 오류나 일시적 오류인 경우 재시도
-        if (retryCount < maxRetries && 
-            (error instanceof Error && 
-             (error.message.includes('network') || 
-              error.message.includes('timeout') ||
-              error.message.includes('fetch')))) {
+        // 네트워크 오류나 일시적 오류인 경우에만 재시도
+        const isRetryableError = error instanceof Error && 
+          (error.message.includes('network') || 
+           error.message.includes('timeout') ||
+           error.message.includes('fetch') ||
+           error.message.includes('Failed to fetch') ||
+           error.message.includes('NetworkError'));
+        
+        if (retryCount < maxRetries && isRetryableError) {
           retryCount++;
-          const delay = 1000 * retryCount; // 1초, 2초, 3초 지연
-          console.log(`🔄 ${delay}ms 후 메시지 전송 재시도...`);
+          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 지수적 백오프, 최대 5초
+          console.log(`🔄 재시도 가능한 오류 감지, ${delay}ms 후 메시지 전송 재시도... (${retryCount}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           return attemptSend();
         }
         
+        // 재시도 불가능한 오류 또는 최대 재시도 횟수 도달
+        console.error(`❌ 메시지 전송 최종 실패 (${retryCount + 1}/${maxRetries + 1} 시도)`, error);
         throw error;
       }
     };

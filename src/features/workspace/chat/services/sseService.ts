@@ -83,13 +83,25 @@ class SseService {
 
   // SSE 연결 시작 (Step 2)
   async connect(): Promise<void> {
-    if (this.isConnected || this.eventSource) {
+    // 기존 연결이 있고 실제로 연결된 상태인 경우에만 반환
+    if (this.isConnected && this.eventSource?.readyState === EventSource.OPEN) {
       console.log('⚠️ 이미 SSE에 연결되어 있습니다. 상태:', {
         isConnected: this.isConnected,
         readyState: this.eventSource?.readyState,
         readyStateText: this.getReadyStateText()
       });
       return;
+    }
+
+    // 기존 연결 정리 (상태가 불일치하거나 끊어진 경우)
+    if (this.eventSource) {
+      console.log('🧹 기존 SSE 연결 정리:', {
+        readyState: this.eventSource.readyState,
+        readyStateText: this.getReadyStateText()
+      });
+      this.eventSource.close();
+      this.eventSource = null;
+      this.isConnected = false;
     }
 
     try {
@@ -111,10 +123,10 @@ class SseService {
         withCredentials: this.eventSource.withCredentials
       });
 
-      // 백엔드 타임아웃에 맞춰 연결 타임아웃 단축 (5초)
+      // 백엔드 타임아웃에 맞춰 연결 타임아웃 설정 (8초로 증가)
       const connectionTimeout = setTimeout(() => {
         if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
-          console.log('⏰ SSE 연결 타임아웃 (5초), 재시도. 현재 상태:', {
+          console.log('⏰ SSE 연결 타임아웃 (8초), 재시도. 현재 상태:', {
             readyState: this.eventSource.readyState,
             readyStateText: this.getReadyStateText(),
             url: this.eventSource.url,
@@ -124,7 +136,7 @@ class SseService {
           this.eventSource.close();
           this.scheduleReconnect();
         }
-      }, 5000);
+      }, 8000); // 타임아웃을 8초로 증가
 
       this.eventSource.onopen = (event) => {
         console.log('✅ SSE 연결 성공!', {
@@ -158,14 +170,28 @@ class SseService {
           timeStamp: error.timeStamp,
           message: (error as any).message || 'No error message'
         });
+        
         clearTimeout(connectionTimeout); // 타임아웃 해제
         this.isConnected = false;
         this.stopHeartbeat();
         this.stopConnectionHealthCheck();
         
-        // 백엔드 타임아웃 대응: 모든 오류에 대해 빠른 재연결
-        console.log('🔄 SSE 오류 발생, 즉시 재연결 스케줄');
-        this.scheduleReconnect();
+        // EventSource 상태별 처리
+        if (this.eventSource?.readyState === EventSource.CLOSED) {
+          console.log('🔄 SSE 연결이 완전히 닫힘, 재연결 시도');
+          this.scheduleReconnect();
+        } else if (this.eventSource?.readyState === EventSource.CONNECTING) {
+          console.log('🔄 SSE 연결 시도 중 오류, 잠시 대기 후 재연결');
+          // CONNECTING 상태에서 오류가 발생하면 잠시 대기
+          setTimeout(() => {
+            if (this.eventSource?.readyState !== EventSource.OPEN) {
+              this.scheduleReconnect();
+            }
+          }, 2000);
+        } else {
+          console.log('🔄 SSE 기타 오류, 즉시 재연결');
+          this.scheduleReconnect();
+        }
       };
 
       this.eventSource.onmessage = (event) => {
@@ -425,7 +451,7 @@ class SseService {
         console.log('💔 SSE 연결 끊어짐 감지, 재연결 시도');
         this.scheduleReconnect();
       }
-    }, 4000); // 4초마다 연결 상태 체크 (백엔드 6초 타임아웃 대응)
+    }, 6000); // 6초마다 연결 상태 체크 (타임아웃보다 짧게)
   }
 
   // 하트비트 중지
@@ -450,8 +476,8 @@ class SseService {
         timeSinceLastMessage: Math.round(timeSinceLastMessage / 1000) + 's'
       });
       
-      // 백엔드 타임아웃 대응을 위해 더 짧은 간격으로 체크 (10초)
-      if (timeSinceLastMessage > 10000) {
+      // 더 관대한 타임아웃 설정 (20초)
+      if (timeSinceLastMessage > 20000) {
         console.log(`⚠️ ${Math.round(timeSinceLastMessage/1000)}초간 메시지 없음, 연결 품질 체크`);
         
         // EventSource 상태를 다시 확인
@@ -459,14 +485,14 @@ class SseService {
           console.log('💔 EventSource 상태 이상 감지, 재연결 시도');
           this.scheduleReconnect();
         } else {
-          // 15초가 넘으면 예방적 재연결 (백엔드 타임아웃보다 짧게)
-          if (timeSinceLastMessage > 15000) {
-            console.log('🔄 15초 이상 무응답, 예방적 재연결');
+          // 30초가 넘으면 예방적 재연결
+          if (timeSinceLastMessage > 30000) {
+            console.log('🔄 30초 이상 무응답, 예방적 재연결');
             this.scheduleReconnect();
           }
         }
       }
-    }, 3000); // 3초마다 건강성 체크 (더 빈번하게)
+    }, 5000); // 5초마다 건강성 체크
   }
 
   // 연결 건강성 체크 중지
@@ -492,14 +518,17 @@ class SseService {
 
     this.reconnectAttempts++;
     
-    // 백엔드 6초 타임아웃 대응을 위해 매우 빠른 재연결
+    // 더 보수적인 재연결 전략으로 변경
     let delay;
-    if (this.reconnectAttempts <= 5) {
-      // 처음 5번은 매우 빠르게 재시도 (500ms, 1초, 1.5초, 2초, 2.5초)
-      delay = 500 * this.reconnectAttempts;
+    if (this.reconnectAttempts <= 3) {
+      // 처음 3번은 빠르게 재시도 (1초, 2초, 3초)
+      delay = 1000 * this.reconnectAttempts;
+    } else if (this.reconnectAttempts <= 6) {
+      // 4-6번째는 중간 간격 (5초, 7초, 9초)
+      delay = 3000 + (this.reconnectAttempts - 3) * 2000;
     } else {
-      // 그 이후는 조금 더 긴 간격 (최대 8초)
-      delay = Math.min(3000 + (this.reconnectAttempts - 5) * 1000, 8000);
+      // 그 이후는 긴 간격 (최대 15초)
+      delay = Math.min(10000 + (this.reconnectAttempts - 6) * 2500, 15000);
     }
     
     console.log(`🔄 SSE 재연결 스케줄 (${this.reconnectAttempts}/${this.maxReconnectAttempts}) - ${delay}ms 후`);
@@ -510,7 +539,7 @@ class SseService {
         console.error('SSE 재연결 실패:', error);
         // 재연결 실패 시 다시 스케줄
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          setTimeout(() => this.scheduleReconnect(), 1000);
+          setTimeout(() => this.scheduleReconnect(), 2000); // 2초 후 다시 시도
         }
       });
     }, delay);
@@ -520,14 +549,19 @@ class SseService {
   private async reconnect(): Promise<void> {
     console.log('🔄 SSE 재연결 시도 시작...');
     
-    // 기존 연결 정리
+    // 기존 연결 완전 정리
     if (this.eventSource) {
+      console.log('🧹 기존 EventSource 정리');
       this.eventSource.close();
       this.eventSource = null;
-      this.isConnected = false;
     }
     
+    this.isConnected = false;
     this.stopHeartbeat();
+    this.stopConnectionHealthCheck();
+
+    // 잠시 대기 후 재연결 (네트워크 안정화)
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     try {
       await this.connect();
@@ -571,6 +605,47 @@ class SseService {
     
     console.log('✅ SSE 연결 종료 완료');
   }
+
+  // SSE 연결 상태 강제 체크 및 복구
+  forceConnectionCheck(): void {
+    console.log('🔍 SSE 연결 상태 강제 체크 시작...');
+    
+    const status = this.getConnectionStatus();
+    console.log('📊 현재 SSE 상태:', status);
+    
+    if (!this.isEventSourceConnected()) {
+      console.log('⚠️ SSE 연결 문제 감지, 강제 재연결 실행');
+      this.scheduleReconnect();
+    } else {
+      console.log('✅ SSE 연결 상태 정상');
+    }
+  }
+
+  // SSE 연결 품질 진단
+  diagnoseConnection(): any {
+    const diagnosis = {
+      timestamp: new Date().toISOString(),
+      connectionStatus: this.getConnectionStatus(),
+      // 브라우저 네트워크 상태
+      networkOnline: navigator.onLine,
+      // 마지막 메시지로부터 경과 시간
+      timeSinceLastMessage: Date.now() - this.lastMessageTime,
+      // 재연결 정보
+      reconnectInfo: {
+        attempts: this.reconnectAttempts,
+        maxAttempts: this.maxReconnectAttempts,
+        isReconnectScheduled: !!this.reconnectTimeout
+      },
+      // 큐 상태
+      queueInfo: {
+        messageQueueSize: this.messageQueue.length,
+        isProcessingQueue: this.isProcessingQueue
+      }
+    };
+    
+    console.log('🏥 SSE 연결 진단 결과:', diagnosis);
+    return diagnosis;
+  }
 }
 
 // 싱글톤 인스턴스
@@ -578,7 +653,7 @@ export const sseService = new SseService();
 
 // 전역에서 SSE 상태 확인 가능
 (window as any).debugSSE = () => {
-  console.log('🔍 SSE 전역 디버그 정보:', sseService.getConnectionStatus());
+  const diagnosis = sseService.diagnoseConnection();
   
   // 네트워크 요청 모니터링 활성화
   console.log('🌐 네트워크 모니터링 활성화 중...');
@@ -596,9 +671,13 @@ export const sseService = new SseService();
   console.log('📊 SSE 관련 네트워크 요청:', sseEntries);
   
   return {
-    sseStatus: sseService.getConnectionStatus(),
+    diagnosis,
     networkEntries: sseEntries,
-    timestamp: new Date().toISOString()
+    actions: {
+      forceCheck: () => sseService.forceConnectionCheck(),
+      reconnect: () => sseService.forceConnectionCheck(), // 강제 체크를 통해 재연결 유도
+      disconnect: () => sseService.disconnect()
+    }
   };
 };
 
