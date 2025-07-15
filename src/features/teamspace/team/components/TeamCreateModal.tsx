@@ -44,13 +44,16 @@ const TeamCreateModal: React.FC<TeamCreateModalProps> = ({ isOpen, onClose, onTe
             
             const newTeam = await teamApi.createTeam({
                 name: name.trim(),
-                workspaceId: currentWorkspace.id,
+                workspaceId: currentWorkspace.id.toString(),
             });
 
             // 팀 생성 성공 시 콜백 호출
             if (onTeamCreated) {
                 onTeamCreated(newTeam);
             }
+            
+            // 전역 이벤트 발생 (사이드바 갱신용)
+            window.dispatchEvent(new CustomEvent('teamCreated', { detail: newTeam }));
             
             if (setCurrentTeamProject) {
                 setCurrentTeamProject(newTeam);

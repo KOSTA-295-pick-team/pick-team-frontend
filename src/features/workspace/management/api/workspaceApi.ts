@@ -91,5 +91,24 @@ export const workspaceApi = {
     getBlacklistedMembers: async (workspaceId: string): Promise<User[]> => {
         const response = await apiRequest<ApiResponse<User[]>>(`/workspaces/${workspaceId}/blacklist`);
             return response.data;
-    }
-}; 
+    },
+
+    // 워크스페이스 아이콘 업로드
+    uploadIcon: async (workspaceId: string, formData: FormData): Promise<{ iconUrl: string }> => {
+        const response = await apiRequest<ApiResponse<{ iconUrl: string }>>(`/workspaces/${workspaceId}/icon`, {
+            method: 'POST',
+            body: formData,
+            // FormData를 사용할 때는 headers를 설정하지 않음 (브라우저가 자동으로 설정)
+        });
+        return response.data;
+    },
+
+    // 워크스페이스 정보 업데이트 (이름, 아이콘 URL)
+    updateWorkspace: async (workspaceId: string, data: { name: string; iconUrl?: string }): Promise<Workspace> => {
+        const response = await apiRequest<ApiResponse<Workspace>>(`/workspaces/${workspaceId}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+        return response.data;
+    },
+};

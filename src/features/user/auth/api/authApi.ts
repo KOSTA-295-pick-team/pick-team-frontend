@@ -47,13 +47,16 @@ export const authApi = {
     const refreshToken = tokenManager.getRefreshToken();
     if (!refreshToken) throw new Error('No refresh token available.');
 
-    const response = await apiRequest<{ accessToken: string }>('/users/refresh', {
+    const response = await apiRequest<{ token: string; refreshToken: string }>('/auth/refresh', {
         method: 'POST',
         body: JSON.stringify({ refreshToken }),
     });
 
-    if (response && response.accessToken) {
-        tokenManager.setAccessToken(response.accessToken);
+    if (response && response.token) {
+        tokenManager.setAccessToken(response.token);
+        if (response.refreshToken) {
+            tokenManager.setRefreshToken(response.refreshToken);
+        }
     } else {
         throw new Error('토큰 갱신에 실패했습니다.');
     }

@@ -24,4 +24,5 @@ export { ChatBubbleLeftRightIcon } from './ChatBubbleLeftRightIcon';
 export { UserMinusIcon } from './UserMinusIcon';
 export { NoSymbolIcon } from './NoSymbolIcon';
 export { ShieldCheckIcon } from './ShieldCheckIcon';
-export { ExclamationTriangleIcon } from './ExclamationTriangleIcon'; 
+export { ExclamationTriangleIcon } from './ExclamationTriangleIcon';
+export { PhotoIcon } from './PhotoIcon'; 

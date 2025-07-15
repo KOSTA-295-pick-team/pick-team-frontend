@@ -148,32 +148,11 @@ const TeamBulletinBoard: React.FC<{ teamProjectId: string, boardId: number, curr
     }, [teamProjectId, actualBoardId, page, hasMore]);
 
     useEffect(()=> {
-        const findExistingBoard = async () => {
-            setPage(0);
-            setPosts([]);
-            setHasMore(true);
-            
-            // 여러 가능한 boardId 시도 (1, 팀ID, 팀ID+1000 등)
-            const possibleBoardIds = [1, parseInt(teamProjectId), parseInt(teamProjectId) + 1000];
-            
-            for (const testBoardId of possibleBoardIds) {
-                try {
-                    console.log(`boardId ${testBoardId} 시도 중...`);
-                    const response = await bulletinApi.getPosts(teamProjectId, testBoardId, 0, 1);
-                    console.log(`boardId ${testBoardId} 성공!`, response);
-                    setActualBoardId(testBoardId);
-                    return; // 성공하면 중단
-                } catch (error) {
-                    console.log(`boardId ${testBoardId} 실패:`, error);
-                }
-            }
-            
-            // 모든 시도 실패 시 기본값 사용
-            console.log('모든 boardId 시도 실패, 기본값 사용');
-            setActualBoardId(boardId);
-        };
-        
-        findExistingBoard();
+        // 팀 정보에서 boardId를 받아서 직접 사용
+        setActualBoardId(boardId);
+        setPage(0);
+        setPosts([]);
+        setHasMore(true);
     }, [teamProjectId, boardId]);
 
     useEffect(()=> {
