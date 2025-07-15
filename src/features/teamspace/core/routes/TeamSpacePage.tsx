@@ -98,19 +98,42 @@ export const TeamSpacePage: React.FC = () => {
     // 팀 설정 관련 상태
     const [showTeamSettingsDropdown, setShowTeamSettingsDropdown] = useState(false);
     const [showLeaveTeamModal, setShowLeaveTeamModal] = useState(false);
+    const [showDeleteTeamModal, setShowDeleteTeamModal] = useState(false);
+    
+    // 현재 사용자가 팀장인지 확인
+    const isTeamLeader = team?.leader?.id === currentUser?.id;
     
     // 팀 탈퇴 기능
     const handleLeaveTeam = useCallback(async () => {
         if (!team || !teamId || !currentUser) return;
-        if (window.confirm(`정말로 '${team.name}' 팀을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+        try {
+            await teamApi.leaveTeam(teamId);
+            alert("팀에서 성공적으로 탈퇴했습니다.");
+            navigate(`/ws/${workspaceId}`); // 워크스페이스 홈으로 이동
+        } catch (err) {
+            console.error("팀 탈퇴 실패:", err);
+            alert("팀 탈퇴에 실패했습니다.");
+        }
+    }, [team, teamId, navigate, workspaceId, currentUser]);
+
+    // 팀 삭제 기능
+    const handleDeleteTeam = useCallback(async () => {
+        if (!team || !teamId || !currentUser) return;
+        
+        const confirmText = `정말로 '${team.name}' 팀을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 팀의 모든 데이터(칸반보드, 게시판, 일정 등)가 함께 삭제됩니다.\n\n삭제하려면 '${team.name}'을 정확히 입력하세요.`;
+        
+        const userInput = prompt(confirmText);
+        if (userInput === team.name) {
             try {
-                await teamApi.leaveTeam(teamId);
-                alert("팀에서 성공적으로 탈퇴했습니다.");
+                await teamApi.deleteTeam(teamId);
+                alert("팀이 성공적으로 삭제되었습니다.");
                 navigate(`/ws/${workspaceId}`); // 워크스페이스 홈으로 이동
             } catch (err) {
-                console.error("팀 탈퇴 실패:", err);
-                alert("팀 탈퇴에 실패했습니다.");
+                console.error("팀 삭제 실패:", err);
+                alert("팀 삭제에 실패했습니다.");
             }
+        } else if (userInput !== null) {
+            alert("팀 이름이 일치하지 않습니다.");
         }
     }, [team, teamId, navigate, workspaceId, currentUser]);
 
@@ -161,8 +184,8 @@ export const TeamSpacePage: React.FC = () => {
             contentToRender = <TeamAnnouncementBoard teamId={teamId} workspaceId={workspaceId} currentUser={currentUser} />;
             break;
         case 'bulletin':
-            // bulletinBoardId가 없을 때는 팀 ID를 사용하거나 기본값 사용
-            const boardId = team.bulletinBoardId || parseInt(teamId) || 1;
+            // 팀 정보에서 boardId 사용, 없으면 기본값 사용
+            const boardId = team.boardId || parseInt(teamId) || 1;
             contentToRender = <TeamBulletinBoard teamProjectId={teamId} boardId={boardId} currentUser={currentUser} />;
             break;
         case 'calendar': 
@@ -192,10 +215,17 @@ export const TeamSpacePage: React.FC = () => {
                             <Card className="absolute top-full right-0 mt-2 w-48 z-20">
                                 <ul className="text-sm">
                                     <li>
-                                        <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleLeaveTeam}>
+                                        <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={() => setShowLeaveTeamModal(true)}>
                                             팀 탈퇴하기
                                         </Button>
                                     </li>
+                                    {isTeamLeader && (
+                                        <li>
+                                            <Button variant="ghost" className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleDeleteTeam}>
+                                                팀 삭제하기
+                                            </Button>
+                                        </li>
+                                    )}
                                 </ul>
                             </Card>
                         )}

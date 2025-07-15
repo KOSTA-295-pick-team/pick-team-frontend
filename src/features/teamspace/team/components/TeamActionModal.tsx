@@ -7,25 +7,26 @@ import { Team } from '@/features/teamspace/types/team';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { teamApi } from '@/features/teamspace/team/api/teamApi';
+import TeamCreateModal from './TeamCreateModal';
 
 interface TeamActionModalProps {
     isOpen: boolean;
     onClose: () => void;
-    initialStep?: 'teamAction' | 'createTeam' | 'joinList'; // 초기 단계 설정 prop 추가
+    initialStep?: 'teamAction' | 'joinList'; // 초기 단계 설정 prop 수정
+    onTeamCreated?: (team: Team) => void; // 팀 생성 완료 콜백 추가
 }
 
-const TeamActionModal: React.FC<TeamActionModalProps> = ({ isOpen, onClose, initialStep = 'teamAction' }) => {
+const TeamActionModal: React.FC<TeamActionModalProps> = ({ isOpen, onClose, initialStep = 'teamAction', onTeamCreated }) => {
     const { currentUser } = useAuth();
     const { currentWorkspace } = useWorkspace();
     const navigate = useNavigate();
-    const [step, setStep] = useState<'teamAction' | 'createTeam' | 'joinList'>(initialStep);
+    const [step, setStep] = useState<'teamAction' | 'joinList'>(initialStep);
     const [selectedTeamToJoin, setSelectedTeamToJoin] = useState<Team | null>(null);
     const [teams, setTeams] = useState<Team[]>([]);
     const [isLoadingTeams, setIsLoadingTeams] = useState(false);
     
-    // 팀 생성 폼 상태
-    const [teamName, setTeamName] = useState('');
-    const [isCreatingTeam, setIsCreatingTeam] = useState(false);
+    // 팀 생성 모달 상태
+    const [isTeamCreateModalOpen, setIsTeamCreateModalOpen] = useState(false);
 
     const availableTeamsToJoin = useMemo(() => {
         if (!currentWorkspace || !currentUser) return [];
@@ -69,30 +70,19 @@ const TeamActionModal: React.FC<TeamActionModalProps> = ({ isOpen, onClose, init
         onClose();
         setStep(initialStep);
         setSelectedTeamToJoin(null);
-        setTeamName('');
+        setIsTeamCreateModalOpen(false);
     };
 
-    const handleCreateTeam = async () => {
-        if (!teamName.trim() || !currentWorkspace) {
-            alert("팀 이름을 입력해주세요.");
-            return;
-        }
+    const handleOpenTeamCreateModal = () => {
+        setIsTeamCreateModalOpen(true);
+    };
 
-        try {
-            setIsCreatingTeam(true);
-            const newTeam = await teamApi.createTeam({
-                workspaceId: currentWorkspace.id,
-                name: teamName.trim(),
-            });
-            alert(`${newTeam.name} 팀이 생성되었습니다!`);
-            // setCurrentTeamProject(newTeam); // 컨텍스트 업데이트는 Workspace/Team 페이지에서 처리
-            navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
-            handleCloseAndReset();
-        } catch (error: any) {
-            console.error('팀 생성 실패:', error);
-            alert(error.response?.data?.detail || error.message || '팀 생성에 실패했습니다.');
-        } finally {
-            setIsCreatingTeam(false);
+    const handleTeamCreated = (newTeam: Team) => {
+        setIsTeamCreateModalOpen(false);
+        handleCloseAndReset();
+        // 팀 생성 완료 콜백 호출
+        if (onTeamCreated) {
+            onTeamCreated(newTeam);
         }
     };
 
@@ -153,7 +143,7 @@ const TeamActionModal: React.FC<TeamActionModalProps> = ({ isOpen, onClose, init
             <div className="space-y-3">
                 <Button 
                     className="w-full" 
-                    onClick={() => setStep('createTeam')}
+                    onClick={handleOpenTeamCreateModal}
                 >
                     새 팀 만들기
                 </Button>
@@ -168,52 +158,6 @@ const TeamActionModal: React.FC<TeamActionModalProps> = ({ isOpen, onClose, init
                 {(!currentWorkspace || (availableTeamsToJoin.length === 0 && !isLoadingTeams)) && (
                     <p className="text-xs text-neutral-500 text-center">현재 워크스페이스에 참여할 수 있는 팀이 없습니다.</p>
                 )}
-            </div>
-        );
-    } else if (step === 'createTeam') {
-        modalTitle = "새 팀 만들기";
-        modalFooter = (
-            <div className="flex justify-between w-full">
-                <Button variant="ghost" onClick={() => setStep('teamAction')} leftIcon={<ArrowLeftIcon className="w-4 h-4"/>}>
-                    뒤로
-                </Button>
-                <div className="flex space-x-2">
-                    <Button variant="ghost" onClick={handleCloseAndReset}>취소</Button>
-                    <Button onClick={handleCreateTeam} disabled={!teamName.trim() || isCreatingTeam}>
-                        {isCreatingTeam ? '생성 중...' : '팀 생성'}
-                    </Button>
-                </div>
-            </div>
-        );
-        modalContent = (
-            <div className="space-y-4">
-                <div>
-                    <h3 className="text-lg font-medium text-neutral-900 mb-2">
-                        {currentWorkspace?.name} 워크스페이스에 새로운 팀을 만들어보세요.
-                    </h3>
-                </div>
-                
-                <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-2">
-                        팀 이름
-                    </label>
-                    <input
-                        type="text"
-                        value={teamName}
-                        onChange={(e) => setTeamName(e.target.value)}
-                        placeholder="예: 프론트엔드팀, 백엔드팀, 디자인팀"
-                        className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                        disabled={isCreatingTeam}
-                    />
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                    <div className="text-sm text-blue-700 space-y-1">
-                        <p>• 팀을 생성하면 자동으로 팀장이 됩니다.</p>
-                        <p>• 워크스페이스의 다른 멤버들을 팀에 초대할 수 있습니다.</p>
-                        <p>• 팀만의 칸반 보드, 게시판, 일정 관리를 사용할 수 있습니다.</p>
-                    </div>
-                </div>
             </div>
         );
     } else { // step === 'joinList'
@@ -252,9 +196,17 @@ const TeamActionModal: React.FC<TeamActionModalProps> = ({ isOpen, onClose, init
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={handleCloseAndReset} title={modalTitle} footer={modalFooter}>
-            {modalContent}
-        </Modal>
+        <>
+            <Modal isOpen={isOpen} onClose={handleCloseAndReset} title={modalTitle} footer={modalFooter}>
+                {modalContent}
+            </Modal>
+            
+            <TeamCreateModal
+                isOpen={isTeamCreateModalOpen}
+                onClose={() => setIsTeamCreateModalOpen(false)}
+                onTeamCreated={handleTeamCreated}
+            />
+        </>
     );
 };
 
