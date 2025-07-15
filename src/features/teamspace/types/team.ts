@@ -14,6 +14,8 @@ export interface Team {
     progress?: number;
     kanbanId?: number;
     bulletinBoardId?: number;
+    boardId?: number; // 게시판 ID 추가
+    leader?: User; // 팀장 정보 추가
 }
 
 /**
