@@ -121,10 +121,10 @@ class SseService {
         withCredentials: this.eventSource.withCredentials
       });
 
-      // 백엔드 타임아웃에 맞춰 연결 타임아웃 설정 (10초로 증가)
+      // 백엔드 30분, nginx 10분에 맞춰 연결 타임아웃 설정 (5분으로 조정)
       const connectionTimeout = setTimeout(() => {
         if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
-          console.log('⏰ SSE 연결 타임아웃 (10초), 재시도. 현재 상태:', {
+          console.log('⏰ SSE 연결 타임아웃 (5분), 재시도. 현재 상태:', {
             readyState: this.eventSource.readyState,
             readyStateText: this.getReadyStateText(),
             url: this.eventSource.url,
@@ -134,7 +134,7 @@ class SseService {
           this.eventSource.close();
           this.scheduleReconnect();
         }
-      }, 10000); // 타임아웃을 10초로 증가
+      }, 300000); // 5분 = 300,000ms
 
       this.eventSource.onopen = (event) => {
         console.log('✅ SSE 연결 성공!', {
