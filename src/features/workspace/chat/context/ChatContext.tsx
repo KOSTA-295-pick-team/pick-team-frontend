@@ -87,25 +87,56 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     case 'ADD_MESSAGE':
       const existingMessages = state.messages[action.payload.chatRoomId] || [];
-      const messageExists = existingMessages.some(msg => msg.id === action.payload.message.id);
+      const newMessage = action.payload.message;
+      
+      // 빠른 중복 검사 (ID 기반)
+      const messageExists = existingMessages.some(msg => msg.id === newMessage.id);
       
       if (messageExists) {
-        console.log('🚫 중복 메시지 무시:', action.payload.message.id, '채팅방:', action.payload.chatRoomId);
-        console.log('🚫 기존 메시지 개수:', existingMessages.length);
+        console.log('🚫 중복 메시지 무시:', newMessage.id, '채팅방:', action.payload.chatRoomId);
         return state;
       }
       
-      console.log('✅ 새 메시지 추가:', action.payload.message.id, '채팅방:', action.payload.chatRoomId);
-      console.log('✅ 기존 메시지 개수:', existingMessages.length, '→ 새 개수:', existingMessages.length + 1);
+      console.log('✅ 새 메시지 추가:', newMessage.id, '채팅방:', action.payload.chatRoomId);
+      
+      // 성능 최적화: 새 메시지가 최신인 경우 끝에 바로 추가
+      const lastMessage = existingMessages[existingMessages.length - 1];
+      let updatedMessages: ChatMessage[];
+      
+      if (!lastMessage || newMessage.timestamp.getTime() >= lastMessage.timestamp.getTime()) {
+        // 새 메시지가 가장 최신인 경우 - 단순 추가
+        updatedMessages = [...existingMessages, newMessage];
+        console.log('⚡ 최신 메시지로 빠른 추가');
+      } else {
+        // 시간순 정렬이 필요한 경우 - 이진 검색으로 위치 찾기
+        updatedMessages = [...existingMessages];
+        let insertIndex = updatedMessages.length;
+        
+        // 뒤에서부터 검색 (최근 메시지일 가능성이 높음)
+        for (let i = updatedMessages.length - 1; i >= 0; i--) {
+          if (updatedMessages[i].timestamp.getTime() <= newMessage.timestamp.getTime()) {
+            insertIndex = i + 1;
+            break;
+          }
+          insertIndex = i;
+        }
+        
+        updatedMessages.splice(insertIndex, 0, newMessage);
+        console.log('� 시간순 정렬로 메시지 삽입, 위치:', insertIndex);
+      }
+      
+      // 메모리 관리: 메시지가 너무 많으면 오래된 메시지 제거
+      const maxMessages = 1000;
+      if (updatedMessages.length > maxMessages) {
+        updatedMessages = updatedMessages.slice(-maxMessages);
+        console.log(`📝 메시지 수 제한으로 오래된 메시지 제거, 현재: ${updatedMessages.length}`);
+      }
       
       return {
         ...state,
         messages: {
           ...state.messages,
-          [action.payload.chatRoomId]: [
-            ...existingMessages,
-            action.payload.message,
-          ],
+          [action.payload.chatRoomId]: updatedMessages,
         },
       };
     case 'SET_LOADING':
@@ -144,6 +175,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let isConnected = false;
     let isConnecting = false;
+    let connectionRetryCount = 0;
+    const maxRetries = 5; // 재시도 횟수 증가
+    let connectionStabilityTimer: NodeJS.Timeout | null = null;
 
     const connectSse = async () => {
       if (isConnecting) {
@@ -151,15 +185,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       
+      if (connectionRetryCount >= maxRetries) {
+        console.error('🚫 SSE 연결 최대 재시도 횟수 초과');
+        return;
+      }
+      
       isConnecting = true;
+      connectionRetryCount++;
       
       try {
-        console.log('🔌 SSE 연결 시작... (사용자:', currentUser.id, ')');
+        console.log(`🔌 SSE 연결 시작... (재시도: ${connectionRetryCount}/${maxRetries}, 사용자: ${currentUser.id})`);
         
-        // 기존 연결 확인
+        // 기존 연결 확인 및 정리
         if (sseService.isEventSourceConnected()) {
           console.log('⚠️ 기존 SSE 연결이 활성 상태입니다. 연결을 종료합니다.');
           sseService.disconnect();
+          // 잠시 대기 후 새 연결 시도
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
         // SSE 등록 및 연결
@@ -171,47 +213,73 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         isConnected = true;
         isConnecting = false;
+        connectionRetryCount = 0; // 성공시 재시도 카운트 리셋
         
         console.log('✅ SSE 연결 성공 - 이벤트 리스너 등록');
         dispatch({ type: 'SET_CONNECTED', payload: true });
 
-        // 새 메시지 이벤트 리스너
-        sseService.addEventListener('NEW_CHAT_MESSAGE', (data) => {
-          const timestamp = new Date().toISOString();
-          console.log(`🔔 [${timestamp}] 새 메시지 수신:`, data);
-          console.log('🔔 SSE 연결 상태:', sseService.isEventSourceConnected());
-          
-          // 워크스페이스 멤버 정보에서 발신자 이름 찾기
-          let correctedSenderName = data.senderName || '알 수 없는 사용자';
-          if ((!data.senderName || data.senderName === '알 수 없는 사용자') && currentWorkspace?.members) {
-            const member = currentWorkspace.members.find(m => m.id === data.senderId);
-            if (member && member.name) {
-              correctedSenderName = member.name;
-              console.log(`🔧 [SSE] 발신자 이름 보정: ${data.senderId} -> ${correctedSenderName}`);
+        // 연결 안정성 모니터링 타이머 설정
+        connectionStabilityTimer = setInterval(() => {
+          if (!sseService.isEventSourceConnected()) {
+            console.log('⚠️ 연결 안정성 체크에서 문제 감지, 재연결 시도');
+            if (connectionStabilityTimer) {
+              clearInterval(connectionStabilityTimer);
+              connectionStabilityTimer = null;
             }
+            connectSse();
           }
-          
-          const newMessage: ChatMessage = {
-            id: data.messageId,
-            roomId: data.chatRoomId,
-            userId: data.senderId,
-            userName: correctedSenderName,
-            text: data.content,
-            timestamp: data.createdAt ? new Date(data.createdAt) : new Date(),
-            createdAt: data.createdAt || new Date().toISOString(),
-            senderName: correctedSenderName,
-            senderProfilePictureUrl: undefined,
-          };
+        }, 10000); // 10초마다 연결 상태 체크
 
-          console.log(`🔔 [${timestamp}] 변환된 메시지:`, newMessage);
-          console.log(`🔔 [${timestamp}] 현재 메시지 상태:`, state.messages);
+        // 새 메시지 이벤트 리스너 (성능 최적화)
+        sseService.addEventListener('NEW_CHAT_MESSAGE', (data) => {
+          try {
+            const timestamp = Date.now();
+            console.log(`🔔 [${new Date(timestamp).toISOString()}] 새 메시지 수신:`, data);
+            
+            // 데이터 유효성 검사 (빠른 실패)
+            if (!data?.messageId || !data?.chatRoomId || !data?.content) {
+              console.error('❌ 유효하지 않은 메시지 데이터:', data);
+              return;
+            }
+            
+            // 워크스페이스 멤버 정보에서 발신자 이름 찾기 (캐시된 데이터 사용)
+            let correctedSenderName = data.senderName || '알 수 없는 사용자';
+            if ((!data.senderName || data.senderName === '알 수 없는 사용자') && currentWorkspace?.members) {
+              const member = currentWorkspace.members.find(m => m.id === data.senderId);
+              if (member?.name) {
+                correctedSenderName = member.name;
+              }
+            }
+            
+            // 타임스탬프 처리 (성능 최적화)
+            const messageTimestamp = data.sentAt ? new Date(data.sentAt) :
+                                    data.createdAt ? new Date(data.createdAt) : 
+                                    new Date(timestamp);
+            
+            const newMessage: ChatMessage = {
+              id: data.messageId,
+              roomId: data.chatRoomId,
+              userId: data.senderId,
+              userName: correctedSenderName,
+              text: data.content,
+              timestamp: messageTimestamp,
+              createdAt: data.sentAt || data.createdAt || new Date(timestamp).toISOString(),
+              senderName: correctedSenderName,
+              senderProfilePictureUrl: undefined,
+            };
 
-          dispatch({ 
-            type: 'ADD_MESSAGE', 
-            payload: { chatRoomId: data.chatRoomId, message: newMessage }
-          });
-          
-          console.log(`🔔 [${timestamp}] 메시지 추가 dispatch 완료`);
+            // 비동기로 디스패치하여 UI 블로킹 방지
+            requestAnimationFrame(() => {
+              dispatch({ 
+                type: 'ADD_MESSAGE', 
+                payload: { chatRoomId: data.chatRoomId, message: newMessage }
+              });
+            });
+            
+          } catch (error) {
+            console.error('❌ 새 메시지 처리 중 오류:', error);
+            // 에러가 발생해도 SSE 연결을 유지
+          }
         });
 
         // 메시지 삭제 이벤트 리스너
@@ -232,8 +300,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
       } catch (error) {
-        console.error('SSE 연결 실패:', error);
+        console.error(`❌ SSE 연결 실패 (${connectionRetryCount}/${maxRetries}):`, error);
+        isConnecting = false;
         dispatch({ type: 'SET_CONNECTED', payload: false });
+        
+        // 재시도
+        if (connectionRetryCount < maxRetries) {
+          const retryDelay = 2000 * connectionRetryCount; // 점진적 백오프
+          console.log(`🔄 ${retryDelay}ms 후 SSE 연결 재시도...`);
+          setTimeout(connectSse, retryDelay);
+        }
       }
     };
 
@@ -242,6 +318,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 컴포넌트 언마운트시 SSE 연결 해제
     return () => {
       console.log('🧹 ChatProvider cleanup 실행 - 연결 상태:', isConnected);
+      
+      // 연결 안정성 타이머 정리
+      if (connectionStabilityTimer) {
+        clearInterval(connectionStabilityTimer);
+        connectionStabilityTimer = null;
+      }
+      
       if (isConnected) {
         console.log('🔌 SSE 연결 해제 중...');
         sseService.disconnect();
@@ -251,7 +334,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('ℹ️ SSE 연결이 없어서 해제 건너뜀');
       }
     };
-  }, [currentUser?.id, currentWorkspace?.id]); // currentWorkspace.id도 추가하여 워크스페이스 변경시에도 재연결
+  }, [currentUser?.id, currentWorkspace?.id]);
 
   // 채팅방 목록 로드
   const loadChatRooms = useCallback(async () => {
@@ -375,9 +458,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('메시지 로드 API 호출:', parseInt(currentWorkspace.id), chatRoomId);
       const response = await chatApi.getChatMessages(parseInt(currentWorkspace.id), chatRoomId);
-      console.log('메시지 로드 응답:', response);
+      console.log('🔍 백엔드 원본 메시지 응답:', response);
       
-      const messages: ChatMessage[] = response.messages.map(msg => {
+      if (response.messages && response.messages.length > 0) {
+        console.log('🔍 백엔드 첫 번째 메시지 구조:', response.messages[0]);
+      }
+      
+      const messages: ChatMessage[] = response.messages.map((msg, index) => {
         // 워크스페이스 멤버 정보에서 발신자 이름 찾기
         let correctedSenderName = msg.senderName;
         if ((!msg.senderName || msg.senderName === '알 수 없는 사용자') && currentWorkspace?.members) {
@@ -388,21 +475,45 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
         
+        // 각 메시지마다 독립적인 timestamp 생성
+        const messageTimestamp = msg.sentAt ? new Date(msg.sentAt) : 
+                                msg.createdAt ? new Date(msg.createdAt) : new Date();
+        console.log(`🕐 [${index}] 메시지 ${msg.id} 타임스탬프 처리:`, {
+          originalSentAt: msg.sentAt,
+          originalCreatedAt: msg.createdAt,
+          parsedTimestamp: messageTimestamp.toISOString(),
+          timeValue: messageTimestamp.getTime()
+        });
+        
         return {
           id: msg.id,
           roomId: msg.chatRoomId,
           userId: msg.senderId,
           userName: correctedSenderName,
           text: msg.content,
-          timestamp: msg.createdAt ? new Date(msg.createdAt) : new Date(),
-          createdAt: msg.createdAt || new Date().toISOString(),
+          timestamp: messageTimestamp,
+          createdAt: msg.sentAt || msg.createdAt || new Date().toISOString(),
           senderName: correctedSenderName,
           senderProfilePictureUrl: msg.senderProfileImageUrl,
         };
       });
 
-      console.log('변환된 메시지:', messages);
-      dispatch({ type: 'SET_MESSAGES', payload: { chatRoomId, messages } });
+      console.log('📋 백엔드에서 받은 메시지들:', messages.map(m => ({
+        id: m.id,
+        text: m.text.substring(0, 20) + '...',
+        timestamp: m.timestamp.toLocaleString()
+      })));
+      
+      // 안전을 위해 타임스탬프 기준으로 정렬 (ASC)
+      const sortedMessages = messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      
+      console.log('📋 정렬 후 메시지 순서:', sortedMessages.map(m => ({
+        id: m.id,
+        text: m.text.substring(0, 20) + '...',
+        timestamp: m.timestamp.toLocaleString()
+      })));
+      
+      dispatch({ type: 'SET_MESSAGES', payload: { chatRoomId, messages: sortedMessages } });
     } catch (error) {
       console.error('메시지 로드 실패:', error);
       dispatch({ type: 'SET_ERROR', payload: '메시지를 불러오지 못했습니다.' });
@@ -415,22 +526,62 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMessage = useCallback(async (chatRoomId: number, content: string) => {
     if (!currentUser || !currentWorkspace) return;
 
-    try {
-      const request = {
-        content,
-        senderId: parseInt(currentUser.id.toString()),
-        senderName: currentUser.name,
-      };
-
-      console.log('메시지 전송 요청:', request);
-      await chatApi.sendMessage(parseInt(currentWorkspace.id), chatRoomId, request);
-      console.log('메시지 전송 성공 - SSE를 통해 실시간 업데이트 예정');
-      
-      // SSE를 통해 자동으로 새 메시지가 추가되므로 별도로 메시지 목록을 다시 로드하지 않음
-    } catch (error) {
-      console.error('메시지 전송 실패:', error);
-      throw error;
+    // 빈 메시지 체크
+    if (!content.trim()) {
+      console.log('⚠️ 빈 메시지는 전송하지 않습니다.');
+      return;
     }
+
+    const maxRetries = 3;
+    let retryCount = 0;
+
+    const attemptSend = async (): Promise<void> => {
+      try {
+        const request = {
+          content: content.trim(),
+          senderId: parseInt(currentUser.id.toString()),
+          senderName: currentUser.name,
+        };
+
+        console.log(`📤 메시지 전송 시도 (${retryCount + 1}/${maxRetries + 1}):`, request);
+        
+        // 메시지 전송 API 호출
+        await chatApi.sendMessage(parseInt(currentWorkspace.id), chatRoomId, request);
+        console.log('✅ 메시지 전송 성공 - SSE를 통해 실시간 업데이트 예정');
+        
+        // SSE를 통해 자동으로 새 메시지가 추가되므로 별도로 메시지 목록을 다시 로드하지 않음
+      } catch (error) {
+        console.error(`❌ 메시지 전송 실패 (시도 ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // SSE 연결 상태 확인
+        if (!sseService.isEventSourceConnected()) {
+          console.log('🔄 SSE 연결이 끊어져서 재연결을 시도합니다.');
+          try {
+            await sseService.connect();
+            console.log('✅ SSE 재연결 성공');
+          } catch (reconnectError) {
+            console.error('❌ SSE 재연결 실패:', reconnectError);
+          }
+        }
+        
+        // 네트워크 오류나 일시적 오류인 경우 재시도
+        if (retryCount < maxRetries && 
+            (error instanceof Error && 
+             (error.message.includes('network') || 
+              error.message.includes('timeout') ||
+              error.message.includes('fetch')))) {
+          retryCount++;
+          const delay = 1000 * retryCount; // 1초, 2초, 3초 지연
+          console.log(`🔄 ${delay}ms 후 메시지 전송 재시도...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return attemptSend();
+        }
+        
+        throw error;
+      }
+    };
+
+    return attemptSend();
   }, [currentUser, currentWorkspace]);
 
   // 채팅방 생성
@@ -560,3 +711,8 @@ export const useChat = (): ChatContextType => {
   }
   return context;
 };
+
+// 기본 내보내기도 추가
+export default useChat;
+
+// End of file

@@ -31,7 +31,8 @@ export interface ChatMessageResponse {
   senderId: number;
   senderProfileImageUrl?: string;
   chatRoomId: number;
-  createdAt: string;
+  createdAt?: string;  // 기존 호환성 유지
+  sentAt?: string;     // 백엔드에서 실제 사용하는 필드
 }
 
 export interface ChatMessageListResponse {

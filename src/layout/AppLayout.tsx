@@ -6,10 +6,11 @@ import { WorkspaceSidebar } from '@/features/workspace/core/components/Workspace
 export const AppLayout: React.FC = () => {
   const location = useLocation();
   
-  // 팀 스페이스 페이지 또는 워크스페이스 홈 페이지인지 확인
+  // 팀 스페이스 페이지, 워크스페이스 홈 페이지, 또는 채팅 페이지인지 확인
   const isTeamSpacePage = location.pathname.includes('/team/');
   const isWorkspaceHomePage = location.pathname.match(/^\/ws\/[^\/]+$/);
-  const hasTeamSidebar = isTeamSpacePage || isWorkspaceHomePage;
+  const isChatPage = location.pathname.includes('/chat/');
+  const hasTeamSidebar = isTeamSpacePage || isWorkspaceHomePage || isChatPage;
   
   return (
     <div className="flex flex-col min-h-screen bg-neutral-50">
