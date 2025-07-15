@@ -11,13 +11,15 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@reduxjs/toolkit": "^2.8.2",
+    "@types/react-linkify": "^1.0.4",
+    "@vitejs/plugin-react": "^4.6.0",
     "axios": "^1.10.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-linkify": "^1.0.0-alpha",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.6.2",
     "vite": "^6.2.0",
-    "@vitejs/plugin-react": "^4.6.0",
     "vite-tsconfig-paths": "^4.3.2"
   },
   "devDependencies": {

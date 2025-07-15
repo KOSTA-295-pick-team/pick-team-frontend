@@ -6,6 +6,7 @@ import { useChat } from '../context/ChatContext';
 import { Card, TextArea, Button } from '@/components/ui';
 import { PlusCircleIcon, XCircleIcon } from '@/assets/icons';
 import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
+import Linkify from 'react-linkify';
 
 // 메시지 컴포넌트를 memo로 최적화하여 깜빡거림 방지
 const MessageItem = memo<{
@@ -25,7 +26,17 @@ const MessageItem = memo<{
           )}
         </div>
       )}
-      {msg.text && <p className="text-sm whitespace-pre-line">{msg.text}</p>}
+      {msg.text && (
+        <p className="text-sm whitespace-pre-line">
+          <Linkify componentDecorator={(decoratedHref: string, decoratedText: string, key: number) => (
+            <a target="_blank" rel="noopener noreferrer" href={decoratedHref} key={key} className="text-blue-300 hover:underline">
+              {decoratedText}
+            </a>
+          )}>
+            {msg.text}
+          </Linkify>
+        </p>
+      )}
       <p className={`text-xs mt-1 ${msg.userId === parseInt(currentUserId.toString()) ? 'text-blue-200 text-right' : 'text-neutral-500'}`}>
         {msg.userName || msg.senderName}, {(() => {
           // timestamp 처리를 더 안전하게 개선
