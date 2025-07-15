@@ -1,21 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
+import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { teamApi } from '@/features/teamspace/team/api/teamApi';
+import { chatApi, ChatRoomResponse } from '@/features/workspace/chat/api/chatApi';
 import { Team } from '@/types';
 import { 
     CogIcon,
     PlusCircleIcon, 
-    UsersIcon,
     VideoCameraIcon,
-    ChatBubbleIcon,
-    LockClosedIcon 
+    LockClosedIcon,
+    UserIcon,
+    ChatBubbleBottomCenterTextIcon,
+    UsersIcon
 } from '@/assets/icons';
-import TeamCreateModal from '@/features/teamspace/team/components/TeamCreateModal';
-import NewChatModal from '@/features/workspace/chat/components/NewChatModal';
-import WorkspaceSettingsModal from '@/features/workspace/management/components/WorkspaceSettingsModal';
+import { NewChatModal } from '@/features/workspace/chat/components/NewChatModal';
 
-// 임시 모달 컴포넌트 - 실제 구현 시 수정 필요
+// 임시 모달 컴포넌트들 - 실제 구현 시 수정 필요
+const TeamCreateModal: React.FC<{ isOpen: boolean; onClose: () => void; onTeamCreated: (team: Team) => void }> = ({ isOpen, onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg">
+                <h2 className="text-lg font-bold mb-4">팀 생성</h2>
+                <p className="mb-4">팀 생성 모달이 구현되지 않았습니다.</p>
+                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
+            </div>
+        </div>
+    );
+};
+
 const NewVideoConferenceModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
     return (
@@ -31,91 +45,214 @@ const NewVideoConferenceModal: React.FC<{ isOpen: boolean; onClose: () => void }
 
 export const TeamProjectSidebar: React.FC = () => {
     const { currentWorkspace } = useWorkspace();
-  const navigate = useNavigate();
+    const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const { workspaceId, teamId } = useParams<{ workspaceId: string; teamId: string; }>();
-  const location = useLocation();    const [teamProjects, setTeamProjects] = useState<Team[]>([]);
+    const location = useLocation();
+
+    const [teamProjects, setTeamProjects] = useState<Team[]>([]);
+    const [chatRooms, setChatRooms] = useState<ChatRoomResponse[]>([]);
+    const [chatRoomMembers, setChatRoomMembers] = useState<{[roomId: number]: any[]}>({});
     const [isTeamCreateModalOpen, setIsTeamCreateModalOpen] = useState(false);
     const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
     const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
-    const [isWorkspaceSettingsModalOpen, setIsWorkspaceSettingsModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (currentWorkspace) {
-      loadTeams();
-    }
-  }, [currentWorkspace]);
+    // 팀 목록 로드
+    useEffect(() => {
+        if (currentWorkspace) {
+            teamApi.getTeams(currentWorkspace.id.toString())
+                .then(teams => {
+                    setTeamProjects(teams);
+                })
+                .catch(error => {
+                    console.error("팀 목록을 불러오는데 실패했습니다:", error);
+                    setTeamProjects([]);
+                });
+        }
+    }, [currentWorkspace]);
 
-  // 워크스페이스 홈으로 돌아왔을 때 팀 목록 갱신
-  useEffect(() => {
-    if (currentWorkspace && location.pathname === `/ws/${workspaceId}`) {
-      loadTeams();
-    }
-  }, [location.pathname, currentWorkspace, workspaceId]);
+    // 채팅방 목록 로드
+    useEffect(() => {
+        const loadChatRooms = async () => {
+            if (!currentWorkspace || !currentUser) return;
+            
+            try {
+                const response = await chatApi.getChatRooms(Number(currentWorkspace.id));
+                console.log('🏠 [TeamProjectSidebar] 채팅방 목록 응답:', response);
+                console.log('🏠 [TeamProjectSidebar] 채팅방 목록 상세:', response.content?.map(room => ({
+                    id: room.id,
+                    name: room.name,
+                    type: room.type,
+                    memberCount: room.memberCount
+                })));
+                
+                const rooms = response.content || [];
+                
+                // DM 채팅방들의 멤버 정보를 먼저 모두 가져오기
+                const dmRooms = rooms.filter(room => room.type === 'PERSONAL');
+                const membersData: {[roomId: number]: any[]} = {};
+                
+                // 병렬로 모든 DM 채팅방의 멤버 정보 가져오기
+                await Promise.all(
+                    dmRooms.map(async (room) => {
+                        try {
+                            const members = await chatApi.getChatMembers(room.id);
+                            membersData[room.id] = members;
+                            console.log(`🏠 [TeamProjectSidebar] DM 채팅방 ${room.id} 멤버:`, members);
+                        } catch (error) {
+                            console.error(`DM 채팅방 ${room.id}의 멤버 정보를 가져오는데 실패:`, error);
+                            membersData[room.id] = [];
+                        }
+                    })
+                );
+                
+                // 멤버 정보를 먼저 설정하고 나서 채팅방 목록 설정
+                setChatRoomMembers(membersData);
+                setChatRooms(rooms);
+                
+            } catch (error) {
+                console.error("채팅방 목록을 불러오는데 실패했습니다:", error);
+                setChatRooms([]);
+                setChatRoomMembers({});
+            }
+        };
 
-  // 팀 생성 이벤트 리스닝
-  useEffect(() => {
-    const handleTeamCreated = (event: CustomEvent) => {
-      const newTeam = event.detail;
-      setTeamProjects(prev => [...prev, newTeam]);
+        loadChatRooms();
+    }, [currentWorkspace, currentUser]);
+
+    const handleTeamCreated = (newTeam: Team) => {
+        setTeamProjects(prev => [...prev, newTeam]);
+        if (currentWorkspace) {
+            navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
+        }
     };
 
-    window.addEventListener('teamCreated', handleTeamCreated as EventListener);
-    
-    return () => {
-      window.removeEventListener('teamCreated', handleTeamCreated as EventListener);
+    const handleChatRoomCreated = async (newChatRoom: ChatRoomResponse) => {
+        setChatRooms(prev => [...prev, newChatRoom]);
+        
+        // DM 채팅방인 경우 멤버 정보도 가져오기
+        if (newChatRoom.type === 'PERSONAL') {
+            try {
+                const members = await chatApi.getChatMembers(newChatRoom.id);
+                setChatRoomMembers(prev => ({
+                    ...prev,
+                    [newChatRoom.id]: members
+                }));
+                console.log(`🏠 [TeamProjectSidebar] 새 DM 채팅방 ${newChatRoom.id} 멤버:`, members);
+            } catch (error) {
+                console.error(`새 DM 채팅방 ${newChatRoom.id}의 멤버 정보를 가져오는데 실패:`, error);
+            }
+        }
     };
-  }, []);
-
-  const loadTeams = () => {
-    if (!currentWorkspace) return;
-    
-    teamApi.getTeams(currentWorkspace.id.toString())
-      .then(teams => {
-        setTeamProjects(teams);
-      })
-      .catch(error => {
-        console.error("팀 목록을 불러오는데 실패했습니다:", error);
-        setTeamProjects([]);
-      });
-  };
-
-  const handleTeamCreated = (newTeam: Team) => {
-    setTeamProjects(prev => [...prev, newTeam]);
-    if (currentWorkspace) {
-      navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
-    }
-  };
 
     const isFeatureActive = (path: string) => location.pathname.includes(path);
 
-    // TODO: Chat & Video 컨텍스트 구현 후 아래 임시 데이터 제거 필요
-    const chatRooms: any[] = [];
+    // 채팅방 이름 표시 함수
+    const getChatRoomDisplayName = (room: ChatRoomResponse) => {
+        console.log('🏷️ [TeamProjectSidebar] 채팅방 이름 계산 시작:', {
+            id: room.id,
+            name: room.name,
+            type: room.type,
+            memberCount: room.memberCount
+        });
+        
+        // DM 채팅방인 경우
+        if (room.type === 'PERSONAL') {
+            console.log('🏷️ [TeamProjectSidebar] DM 채팅방 처리 중...');
+            console.log('🏷️ [TeamProjectSidebar] 백엔드에서 온 채팅방 이름:', room.name);
+            
+            // 멤버 정보에서 상대방 이름 찾기 (우선순위 1)
+            const members = chatRoomMembers[room.id];
+            console.log('🏷️ [TeamProjectSidebar] 채팅방 멤버 정보:', {
+                roomId: room.id,
+                members,
+                currentUserId: currentUser?.id
+            });
+            
+            if (members && currentUser) {
+                console.log('🔍 [TeamProjectSidebar] 멤버 데이터 구조 상세 분석:', {
+                    roomId: room.id,
+                    members: members.map(m => ({
+                        ...m,
+                        memberKeys: Object.keys(m),
+                        memberType: typeof m
+                    })),
+                    currentUserId: currentUser.id,
+                    currentUserIdType: typeof currentUser.id
+                });
+                
+                const otherMember = members.find(member => {
+                    console.log('🔍 [TeamProjectSidebar] 개별 멤버 검사:', {
+                        member,
+                        memberAccount: member.account,
+                        memberAccountId: member.accountId,
+                        memberId: member.id,
+                        memberName: member.name,
+                        memberAccountName: member.accountName,
+                        currentUserId: currentUser.id
+                    });
+                    
+                    // 다양한 필드로 시도
+                    return (member.account && member.account !== currentUser.id) ||
+                           (member.accountId && member.accountId !== currentUser.id);
+                });
+                
+                console.log('🏷️ [TeamProjectSidebar] 상대방 멤버 찾기 결과:', {
+                    allMembers: members.map(m => ({ 
+                        account: m.account,
+                        accountId: m.accountId, 
+                        name: m.name,
+                        accountName: m.accountName,
+                        keys: Object.keys(m)
+                    })),
+                    currentUserId: currentUser.id,
+                    otherMember
+                });
+                
+                if (otherMember) {
+                    // 다양한 필드명으로 이름 시도
+                    const displayName = 
+                        otherMember.name || 
+                        otherMember.accountName || 
+                        `사용자 ${otherMember.account || otherMember.accountId || otherMember.id}`;
+                    console.log('🏷️ [TeamProjectSidebar] DM 채팅방 - 멤버 정보에서 상대방 이름 사용:', displayName);
+                    return displayName;
+                }
+            }
+            
+            // 백엔드에서 설정된 이름이 있고, 유효한 이름이면 사용 (우선순위 2)
+            if (room.name && room.name.trim() !== '' && room.name !== 'DM' && !room.name.includes('대화:')) {
+                console.log('🏷️ [TeamProjectSidebar] DM 채팅방 - 백엔드에서 설정된 유효한 이름 사용:', room.name);
+                return room.name;
+            }
+            
+            // 멤버 정보가 없는 경우 임시 표시
+            console.log('🏷️ [TeamProjectSidebar] DM 채팅방 - 멤버 정보 없음, 임시 표시');
+            return `DM ${room.id}`;
+        }
+        
+        // 그룹 채팅방이면 이름이 있으면 사용, 없으면 기본 표시
+        if (room.name && room.name.trim() !== '') {
+            console.log('🏷️ [TeamProjectSidebar] 그룹 채팅방 - 이름 사용:', room.name);
+            return room.name;
+        }
+        console.log('🏷️ [TeamProjectSidebar] 그룹 채팅방 - 기본 표시:', `그룹 채팅 ${room.id}`);
+        return `그룹 채팅 ${room.id}`;
+    };
+
+    // TODO: Video 컨텍스트 구현 후 아래 임시 데이터 제거 필요
     const videoRooms: any[] = [];
-    const getChatRoomName = (room: any) => room.name || 'Chat Room';
 
 
   return (
         <>
-        <div className="bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 w-64 p-4 fixed top-16 left-16 h-[calc(100vh-4rem)] z-30 flex flex-col">            
+        <div className="bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 w-64 p-4 fixed top-16 left-16 h-[calc(100vh-4rem)] z-30 flex flex-col">
             <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-neutral-200 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
-                        {currentWorkspace?.iconUrl ? (
-                            <img 
-                                src={currentWorkspace.iconUrl} 
-                                alt={`${currentWorkspace.name} 아이콘`} 
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <span className="text-sm text-neutral-500">📁</span>
-                        )}
-                    </div>
-                    <h2 className="text-lg font-bold truncate">{currentWorkspace?.name}</h2>
-                </div>
-                <button onClick={() => setIsWorkspaceSettingsModalOpen(true)}>
+                <h2 className="text-lg font-bold">{currentWorkspace?.name}</h2>
+                <Link to={`/ws/${workspaceId}/settings`}>
                     <CogIcon className="h-6 w-6 text-neutral-500 hover:text-neutral-800 dark:hover:text-white" />
-                </button>
-            </div>
+                </Link>
+      </div>
       
             <nav className="flex-grow overflow-y-auto">
                 {/* Team Projects */}
@@ -141,23 +278,46 @@ export const TeamProjectSidebar: React.FC = () => {
                     </ul>
       </div>
       
-                {/* Chat Rooms */}
+                {/* DM 채팅 */}
                 <div className="mb-6">
                      <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 flex justify-between items-center">
-                        <span>채팅</span>
+                        <span>DM</span>
+                        <button onClick={() => setIsNewChatModalOpen(true)} className="text-neutral-400 hover:text-white">
+                            <PlusCircleIcon className="h-5 w-5" />
+                        </button>
+                    </h3>
+                    <ul>
+                        {chatRooms.filter(room => room.type === 'PERSONAL').map(room => (
+                            <li key={room.id}>
+                                <Link 
+                                    to={`/ws/${workspaceId}/chat/${room.id}`}
+                                    className={`flex items-center space-x-2 p-2 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600 ${isFeatureActive(`/chat/${room.id}`) ? 'bg-neutral-200 dark:bg-neutral-600 font-semibold' : ''}`}
+                                >
+                                    <UserIcon className="h-4 w-4 text-neutral-500" />
+                                    <span className="truncate">{getChatRoomDisplayName(room)}</span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+
+                {/* 그룹 채팅 */}
+                <div className="mb-6">
+                     <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 flex justify-between items-center">
+                        <span>그룹 채팅</span>
                         <button onClick={() => setIsNewChatModalOpen(true)} className="text-neutral-400 hover:text-white">
                             <PlusCircleIcon className="h-5 w-5" />
                 </button>
                     </h3>
                     <ul>
-                        {chatRooms.map(room => (
+                        {chatRooms.filter(room => room.type === 'GROUP').map(room => (
                             <li key={room.id}>
                                 <Link 
                                     to={`/ws/${workspaceId}/chat/${room.id}`}
                                     className={`flex items-center space-x-2 p-2 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600 ${isFeatureActive(`/chat/${room.id}`) ? 'bg-neutral-200 dark:bg-neutral-600 font-semibold' : ''}`}
                 >
-                                    <ChatBubbleIcon className="h-4 w-4 text-neutral-500" />
-                                    <span className="truncate">{getChatRoomName(room)}</span>
+                                    <ChatBubbleBottomCenterTextIcon className="h-4 w-4 text-neutral-500" />
+                                    <span className="truncate">{getChatRoomDisplayName(room)}</span>
                                 </Link>
                             </li>
                         ))}
@@ -197,14 +357,12 @@ export const TeamProjectSidebar: React.FC = () => {
         <NewChatModal
             isOpen={isNewChatModalOpen}
             onClose={() => setIsNewChatModalOpen(false)}
-        />        <NewVideoConferenceModal
+            onChatRoomCreated={handleChatRoomCreated}
+        />
+        <NewVideoConferenceModal
             isOpen={isNewVideoConferenceModalOpen}
             onClose={() => setIsNewVideoConferenceModalOpen(false)}
         />
-        <WorkspaceSettingsModal
-            isOpen={isWorkspaceSettingsModalOpen}
-            onClose={() => setIsWorkspaceSettingsModalOpen(false)}
-        />
         </>
-    );
+  );
 }; 

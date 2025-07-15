@@ -3,18 +3,21 @@ import { Provider } from 'react-redux';
 import { store } from '@/store/store';
 import { AuthProvider } from '@/features/user/auth/context/AuthContext';
 import { WorkspaceProvider } from '@/features/workspace/core/context/WorkspaceContext';
+import { ChatProvider } from '@/features/workspace/chat/context/ChatContext';
 import Router from '@/Router';
 
 function App() {
   return (
     <Provider store={store}>
       <HashRouter>
-      <AuthProvider>
+        <AuthProvider>
           <WorkspaceProvider>
-            <Router />
+            <ChatProvider>
+              <Router />
+            </ChatProvider>
           </WorkspaceProvider>
         </AuthProvider>
-        </HashRouter>
+      </HashRouter>
     </Provider>
   );
 }
