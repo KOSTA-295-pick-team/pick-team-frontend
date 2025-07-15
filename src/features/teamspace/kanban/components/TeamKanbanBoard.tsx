@@ -38,9 +38,9 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
     <h4 className="font-semibold text-neutral-800 mb-1">{card.title}</h4>
     <div className="flex items-center justify-between text-xs text-neutral-500">
       <div className="flex items-center space-x-2">
-        {card.dueDate && (
+        {card.deadline && (
           <span className="bg-red-100 text-red-700 px-2 py-1 rounded">
-            {new Date(card.dueDate).toLocaleDateString()}
+            {new Date(card.deadline).toLocaleDateString()}
           </span>
         )}
         {card.comments.length > 0 && (
@@ -106,7 +106,7 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
 }) => {
   const [editedTitle, setEditedTitle] = useState("");
   const [editedDescription, setEditedDescription] = useState("");
-  const [editedDueDate, setEditedDueDate] = useState<string>("");
+  const [editedDeadline, setEditedDeadline] = useState<string>("");
   const [editedAssigneeIds, setEditedAssigneeIds] = useState<number[]>([]);
   const [newComment, setNewComment] = useState("");
 
@@ -128,10 +128,10 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [showDueDatePopover, setShowDueDatePopover] = useState(false);
+  const [showDeadlinePopover, setShowDeadlinePopover] = useState(false);
   const [showAssigneePopover, setShowAssigneePopover] = useState(false);
 
-  const dueDateRef = useRef<HTMLDivElement>(null);
+  const deadlineRef = useRef<HTMLDivElement>(null);
   const assigneeRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -140,7 +140,7 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
     if (card) {
       setEditedTitle(card.title);
       setEditedDescription(card.description || "");
-      setEditedDueDate(card.dueDate ? card.dueDate.split("T")[0] : "");
+      setEditedDeadline(card.deadline ? card.deadline.split("T")[0] : "");
       // assignees 데이터 처리 개선
       const assigneeIds = card.assignees
         .map((a) => {
@@ -179,8 +179,8 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
     onUpdateCard(card.id, {
       title: editedTitle,
       content: editedDescription,
-      deadline: editedDueDate
-        ? new Date(editedDueDate).toISOString()
+      deadline: editedDeadline
+        ? new Date(editedDeadline).toISOString()
         : undefined,
       assigneeIds: editedAssigneeIds.map(String),
     });
@@ -332,20 +332,20 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
               <div className="mb-6">
                 <div className="flex flex-wrap gap-3">
                   {/* 마감일 버튼 */}
-                  <div className="relative" ref={dueDateRef}>
-                    {editedDueDate ? (
+                  <div className="relative" ref={deadlineRef}>
+                    {editedDeadline ? (
                       <Button
                         size="md"
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setShowDueDatePopover(true);
+                          setShowDeadlinePopover(true);
                         }}
                         className="bg-neutral-100 border-neutral-300 text-neutral-700 hover:bg-neutral-200 flex items-center space-x-2 px-4 py-2.5"
                       >
                         <span>📅</span>
                         <span>
-                          {new Date(editedDueDate).toLocaleDateString()}
+                          {new Date(editedDeadline).toLocaleDateString()}
                         </span>
                       </Button>
                     ) : (
@@ -354,7 +354,7 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setShowDueDatePopover(true);
+                          setShowDeadlinePopover(true);
                         }}
                         className="bg-neutral-100 border-neutral-300 text-neutral-700 hover:bg-neutral-200 flex items-center space-x-2 px-4 py-2.5"
                       >
@@ -808,60 +808,42 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
           </div>
 
           {/* 마감일 설정 팝오버 */}
-          {showDueDatePopover && (
+          {showDeadlinePopover && (
             <div
               className="fixed inset-0 z-50"
-              onClick={() => setShowDueDatePopover(false)}
+              onClick={() => setShowDeadlinePopover(false)}
             >
               <div
                 className="absolute bg-white p-4 rounded-lg shadow-xl border"
                 style={{
-                  top: dueDateRef.current?.getBoundingClientRect().bottom || 0,
-                  left: dueDateRef.current?.getBoundingClientRect().left || 0,
+                  top: deadlineRef.current?.getBoundingClientRect().bottom || 0,
+                  left: deadlineRef.current?.getBoundingClientRect().left || 0,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <h4 className="font-medium mb-3">마감일 설정</h4>
                 <Input
                   type="date"
-                  value={editedDueDate}
-                  onChange={(e) => setEditedDueDate(e.target.value)}
+                  value={editedDeadline}
+                  onChange={(e) => setEditedDeadline(e.target.value)}
                 />
-                <div className="flex justify-between mt-3">
-                  <div>
-                    {editedDueDate && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditedDueDate("");
-                          setShowDueDatePopover(false);
-                          handleSave();
-                        }}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        삭제
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex space-x-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setShowDueDatePopover(false)}
-                    >
-                      취소
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setShowDueDatePopover(false);
-                        handleSave();
-                      }}
-                    >
-                      저장
-                    </Button>
-                  </div>
+                <div className="flex justify-end mt-3 space-x-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowDeadlinePopover(false)}
+                  >
+                    취소
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setShowDeadlinePopover(false);
+                      handleSave();
+                    }}
+                  >
+                    저장
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1077,7 +1059,7 @@ const TeamKanbanBoard: React.FC<{
             title: task.subject,
             content: task.content,
             description: task.content,
-            dueDate: task.deadline,
+            deadline: task.deadline,
             isApproved: task.isApproved,
             completionRequested: task.completionRequested,
             completionRequestMessage: task.completionRequestMessage,
@@ -1161,7 +1143,7 @@ const TeamKanbanBoard: React.FC<{
                 title: updatedTaskDto.subject,
                 content: updatedTaskDto.content,
                 description: updatedTaskDto.content,
-                dueDate: updatedTaskDto.deadline,
+                deadline: updatedTaskDto.deadline,
                 assignees: updatedTaskDto.members.map((member) => ({
                   id: member.accountId.toString(),
                   userId: member.accountId.toString(),
@@ -1184,7 +1166,7 @@ const TeamKanbanBoard: React.FC<{
           title: updatedTaskDto.subject,
           content: updatedTaskDto.content,
           description: updatedTaskDto.content,
-          dueDate: updatedTaskDto.deadline,
+          deadline: updatedTaskDto.deadline,
           assignees: updatedTaskDto.members.map((member) => ({
             id: member.accountId.toString(),
             userId: member.accountId.toString(),

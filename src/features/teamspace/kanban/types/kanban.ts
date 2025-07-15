@@ -26,7 +26,6 @@ export interface KanbanCard {
   content?: string;
   description?: string;
   deadline?: string;
-  dueDate?: string;
   isApproved?: boolean;
   completionRequested?: boolean;
   completionRequestMessage?: string;
