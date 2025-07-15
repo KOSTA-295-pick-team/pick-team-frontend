@@ -69,8 +69,8 @@ class SseService {
         response: response
       });
       
-      // 백엔드 타임아웃 대응: 등록 후 잠시 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // 백엔드 등록 처리 대기 (Redis 저장 완료 대기)
+      await new Promise(resolve => setTimeout(resolve, 200));
     } catch (error) {
       console.error('🔐 SSE 등록 실패:', {
         timestamp: new Date().toISOString(),
@@ -102,10 +102,8 @@ class SseService {
       this.eventSource.close();
       this.eventSource = null;
       this.isConnected = false;
-    }
-
-    try {
-      // 백엔드 타임아웃 대응: 연결 시도마다 재등록
+    }    try {
+      // 매 연결 시도마다 새로 등록 (동시성 문제 해결)
       console.log('🔄 SSE 재등록 수행 중...');
       await this.register();
 
@@ -114,7 +112,7 @@ class SseService {
       const sseUrl = '/api/sse/subscribe';
       console.log('🔌 SSE 연결 시도:', sseUrl);
       console.log('🔌 현재 시간:', new Date().toISOString());
-      
+
       this.eventSource = new EventSource(sseUrl);
       console.log('📡 EventSource 생성됨, 초기 상태:', {
         readyState: this.eventSource.readyState,
@@ -123,10 +121,10 @@ class SseService {
         withCredentials: this.eventSource.withCredentials
       });
 
-      // 백엔드 타임아웃에 맞춰 연결 타임아웃 설정 (8초로 증가)
+      // 백엔드 타임아웃에 맞춰 연결 타임아웃 설정 (10초로 증가)
       const connectionTimeout = setTimeout(() => {
         if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
-          console.log('⏰ SSE 연결 타임아웃 (8초), 재시도. 현재 상태:', {
+          console.log('⏰ SSE 연결 타임아웃 (10초), 재시도. 현재 상태:', {
             readyState: this.eventSource.readyState,
             readyStateText: this.getReadyStateText(),
             url: this.eventSource.url,
@@ -136,7 +134,7 @@ class SseService {
           this.eventSource.close();
           this.scheduleReconnect();
         }
-      }, 8000); // 타임아웃을 8초로 증가
+      }, 10000); // 타임아웃을 10초로 증가
 
       this.eventSource.onopen = (event) => {
         console.log('✅ SSE 연결 성공!', {
@@ -182,9 +180,10 @@ class SseService {
           this.scheduleReconnect();
         } else if (this.eventSource?.readyState === EventSource.CONNECTING) {
           console.log('🔄 SSE 연결 시도 중 오류, 잠시 대기 후 재연결');
-          // CONNECTING 상태에서 오류가 발생하면 잠시 대기
+          // CONNECTING 상태에서 오류가 발생하면 재등록 후 재연결
           setTimeout(() => {
             if (this.eventSource?.readyState !== EventSource.OPEN) {
+              console.log('🔄 연결 실패 확인, 재등록 후 재연결 시도');
               this.scheduleReconnect();
             }
           }, 2000);

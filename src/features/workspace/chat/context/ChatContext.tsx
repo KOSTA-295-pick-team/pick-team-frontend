@@ -273,9 +273,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }, 12000); // 12초마다 동기화 체크 (백엔드 타임아웃 대응)
-    };
-
-    const connectSse = async () => {
+    };    const connectSse = async () => {
       if (isConnecting) {
         console.log('⚠️ 이미 SSE 연결 중입니다.');
         return;
@@ -297,13 +295,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('⚠️ 기존 SSE 연결이 활성 상태입니다. 연결을 종료합니다.');
           sseService.disconnect();
           // 잠시 대기 후 새 연결 시도
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
-        
-        // SSE 등록 및 연결
+
+        // SSE 등록 및 연결 - 순차적으로 처리
+        console.log('🔐 SSE 등록 시작...');
         await sseService.register();
         console.log('✅ SSE 등록 완료');
         
+        // 등록 후 추가 대기 (Redis 반영 시간 확보)
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        console.log('🔌 SSE 연결 시작...');
         await sseService.connect();
         console.log('✅ SSE 연결 완료');
         
