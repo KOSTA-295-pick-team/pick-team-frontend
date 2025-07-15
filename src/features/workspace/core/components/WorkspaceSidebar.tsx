@@ -28,14 +28,22 @@ export const WorkspaceSidebar: React.FC = () => {
                             key={ws.id}
                             onClick={() => selectWorkspace(ws)}
                             title={ws.name}
-                            className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl font-bold transition-all
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl font-bold transition-all overflow-hidden
               ${currentWorkspace?.id === ws.id
                                     ? "bg-primary text-white scale-110 ring-2 ring-white"
                                     : "bg-neutral-700 hover:bg-neutral-600 focus:bg-neutral-600"
                                 }
               focus:outline-none`}
                         >
-                            {ws.iconUrl || ws.name.charAt(0).toUpperCase()}
+                            {ws.iconUrl ? (
+                                <img 
+                                    src={ws.iconUrl} 
+                                    alt={ws.name} 
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                ws.name.charAt(0).toUpperCase()
+                            )}
                         </button>
                     ))
                 )}

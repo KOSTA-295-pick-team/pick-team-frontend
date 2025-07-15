@@ -164,7 +164,7 @@ export const HomePage: React.FC = () => {
         <Card>
           <h1 className="text-2xl font-bold text-neutral-800">안녕하세요, {currentUser.name || '사용자'}님!</h1>
           <p className="text-neutral-600 mt-1">{currentWorkspace.name} 워크스페이스입니다.</p>
-                          <p className="text-neutral-600 mt-2">오늘도 PickTeam과 함께 성공적인 프로젝트를 만들어보세요.</p>
+          <p className="text-neutral-600 mt-2">오늘도 PickTeam과 함께 성공적인 프로젝트를 만들어보세요.</p>
         </Card>
 
       {/* My Teams Section */}

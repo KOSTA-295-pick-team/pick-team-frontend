@@ -57,7 +57,8 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
   
   const config: RequestInit = {
     headers: {
-      'Content-Type': 'application/json',
+      // FormData가 아닌 경우에만 Content-Type 설정
+      ...(!(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
       ...(token && { 'Authorization': `Bearer ${token}` }),
       ...(userId && { 'Account-Id': userId }),
       ...options.headers,
@@ -81,11 +82,14 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
           const retryConfig: RequestInit = {
             ...config,
             headers: {
-              ...config.headers,
-              'Authorization': `Bearer ${newToken}`,
+              // FormData가 아닌 경우에만 Content-Type 설정
+              ...(!(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
+              ...(newToken && { 'Authorization': `Bearer ${newToken}` }),
               ...(newUserId && { 'Account-Id': newUserId }),
+              ...options.headers,
             }
           };
+          
           const retryResponse = await fetch(url, retryConfig);
           
           if (!retryResponse.ok) {

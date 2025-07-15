@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UsersIcon, LinkIcon, NoSymbolIcon, ShieldCheckIcon, ExclamationTriangleIcon, UserMinusIcon } from '@/assets/icons';
+import { UsersIcon, LinkIcon, NoSymbolIcon, ShieldCheckIcon, ExclamationTriangleIcon, UserMinusIcon, PhotoIcon } from '@/assets/icons';
 import { Modal, Button, Input } from '@/components/ui';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
@@ -19,11 +19,17 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
         loadWorkspaces,
         loading 
     } = useWorkspace();
-    const [activeTab, setActiveTab] = useState<'invite' | 'members' | 'blacklist' | 'security' | 'danger'>('invite');
+    const [activeTab, setActiveTab] = useState<'invite' | 'members' | 'blacklist' | 'security' | 'danger' | 'settings'>('invite');
     const [workspacePassword, setWorkspacePassword] = useState('');
     const [showConfirmDelete, setShowConfirmDelete] = useState<{type: string, id: string, name: string} | null>(null);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    
+    // 워크스페이스 설정 상태 추가
+    const [workspaceName, setWorkspaceName] = useState('');
+    const [selectedImage, setSelectedImage] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     // 현재 사용자의 워크스페이스 내 역할 확인
     const isOwner = String(currentWorkspace?.owner?.id) === String(currentUser?.id);
@@ -45,6 +51,8 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     useEffect(() => {
         if (currentWorkspace) {
             setWorkspacePassword(''); // 보안상 비밀번호는 비워둠
+            setWorkspaceName(currentWorkspace.name || '');
+            setImagePreview(currentWorkspace.iconUrl || null);
             
             // 권한이 없는 사용자가 기본적으로 권한이 필요한 탭에 접근하지 못하도록 조정
             if (!canManageWorkspace && (activeTab === 'members' || activeTab === 'blacklist')) {
@@ -192,8 +200,87 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
         }
     }
 
+    // 이미지 선택 처리
+    const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            // 파일 크기 검증 (5MB 제한)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('파일 크기는 5MB 이하여야 합니다.');
+                return;
+            }
+
+            // 파일 형식 검증
+            if (!file.type.startsWith('image/')) {
+                alert('이미지 파일만 업로드 가능합니다.');
+                return;
+            }
+
+            setSelectedImage(file);
+            
+            // 미리보기 생성
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setImagePreview(e.target?.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    // 이미지 제거
+    const handleImageRemove = () => {
+        setSelectedImage(null);
+        setImagePreview(currentWorkspace?.iconUrl || null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    // 워크스페이스 설정 저장
+    const handleSaveWorkspaceSettings = async () => {
+        if (!currentWorkspace) return;
+
+        setActionLoading(true);
+        try {
+            let iconUrl = currentWorkspace.iconUrl;
+
+            // 이미지가 선택되었다면 업로드
+            if (selectedImage) {
+                const formData = new FormData();
+                formData.append('file', selectedImage);
+
+                const uploadResponse = await workspaceApi.uploadIcon(currentWorkspace.id, formData);
+                iconUrl = uploadResponse.iconUrl;
+            }
+
+            // 워크스페이스 정보 업데이트
+            await workspaceApi.updateWorkspace(currentWorkspace.id, {
+                name: workspaceName.trim(),
+                iconUrl: iconUrl
+            });
+
+            // 워크스페이스 목록 갱신
+            await loadWorkspaces();
+
+            alert('워크스페이스 설정이 업데이트되었습니다.');
+            onClose();
+        } catch (error: any) {
+            console.error('워크스페이스 설정 업데이트 실패:', error);
+            if (error.status === 401) {
+                alert('인증이 만료되었습니다. 페이지를 새로고침하거나 다시 로그인해주세요.');
+                // 자동으로 로그인 페이지로 리다이렉트
+                window.location.href = '/login';
+            } else {
+                alert(error.message || '워크스페이스 설정 업데이트에 실패했습니다.');
+            }
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const TABS_CONFIG = [
         { id: 'invite', label: '초대', icon: <LinkIcon className="w-4 h-4 mr-1" /> },
+        ...(canManageWorkspace ? [{ id: 'settings', label: '설정', icon: <PhotoIcon className="w-4 h-4 mr-1" /> }] : []),
         ...(canManageWorkspace ? [{ id: 'members', label: '멤버 관리', icon: <UsersIcon className="w-4 h-4 mr-1" /> }] : []),
         ...(canManageWorkspace ? [{ id: 'blacklist', label: '차단 목록', icon: <NoSymbolIcon className="w-4 h-4 mr-1" /> }] : []),
         ...(isOwner ? [{ id: 'security', label: '보안', icon: <ShieldCheckIcon className="w-4 h-4 mr-1" /> }] : []),
@@ -208,7 +295,14 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
             title={`${currentWorkspace.name} 설정`}
             size="lg"
             footer={ 
-                activeTab === 'security' ? (
+                activeTab === 'settings' ? (
+                    <div className="flex justify-end space-x-2">
+                        <Button variant="ghost" onClick={onClose}>취소</Button>
+                        <Button onClick={handleSaveWorkspaceSettings} disabled={actionLoading || !workspaceName.trim()}>
+                            {actionLoading ? '저장 중...' : '설정 저장'}
+                        </Button>
+                    </div>
+                ) : activeTab === 'security' ? (
                     <div className="flex justify-end space-x-2">
                         <Button variant="ghost" onClick={onClose}>취소</Button>
                         <Button onClick={handleSavePassword}>비밀번호 저장</Button>
@@ -257,6 +351,76 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                     />
                     <div className="flex space-x-2">
                         <Button onClick={handleCopyLink} className="w-full" disabled={loading}>초대 링크 복사</Button>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'settings' && canManageWorkspace && (
+                <div className="space-y-6">
+                    {/* 워크스페이스 이름 */}
+                    <div>
+                        <Input
+                            label="워크스페이스 이름"
+                            value={workspaceName}
+                            onChange={(e) => setWorkspaceName(e.target.value)}
+                            placeholder="워크스페이스 이름을 입력하세요"
+                            maxLength={100}
+                            required
+                        />
+                    </div>
+
+                    {/* 워크스페이스 아이콘 */}
+                    <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">
+                            워크스페이스 아이콘
+                        </label>
+                        
+                        <div className="flex items-center space-x-4">
+                            {/* 현재 아이콘 또는 미리보기 */}
+                            <div className="w-16 h-16 bg-neutral-100 rounded-lg flex items-center justify-center overflow-hidden">
+                                {imagePreview ? (
+                                    <img 
+                                        src={imagePreview} 
+                                        alt="워크스페이스 아이콘" 
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <PhotoIcon className="w-8 h-8 text-neutral-400" />
+                                )}
+                            </div>
+
+                            {/* 업로드 버튼 */}
+                            <div className="flex-1">
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleImageSelect}
+                                    className="hidden"
+                                />
+                                <div className="flex space-x-2">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={actionLoading}
+                                    >
+                                        이미지 선택
+                                    </Button>
+                                    {imagePreview && (
+                                        <Button
+                                            variant="ghost"
+                                            onClick={handleImageRemove}
+                                            disabled={actionLoading}
+                                        >
+                                            제거
+                                        </Button>
+                                    )}
+                                </div>
+                                <p className="text-xs text-neutral-500 mt-1">
+                                    JPG, PNG, GIF 파일 (최대 5MB)
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -522,4 +686,4 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     );
 };
 
-export default WorkspaceSettingsModal; 
+export default WorkspaceSettingsModal;
