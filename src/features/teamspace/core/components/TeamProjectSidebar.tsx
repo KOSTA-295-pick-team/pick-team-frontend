@@ -4,11 +4,6 @@ import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { Team } from '@/types';
 import { 
-    NewChatModal, 
-    NewVideoConferenceModal, 
-    TeamCreateModal 
-} from '@/components/modals';
-import { 
     CogIcon,
     PlusCircleIcon, 
     UsersIcon,
@@ -16,6 +11,46 @@ import {
     ChatBubbleIcon,
     LockClosedIcon 
 } from '@/assets/icons';
+
+// 임시 모달 컴포넌트들 - 실제 구현 시 수정 필요
+const TeamCreateModal: React.FC<{ isOpen: boolean; onClose: () => void; onTeamCreated: (team: Team) => void }> = ({ isOpen, onClose, onTeamCreated }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg">
+                <h2 className="text-lg font-bold mb-4">팀 생성</h2>
+                <p className="mb-4">팀 생성 모달이 구현되지 않았습니다.</p>
+                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
+            </div>
+        </div>
+    );
+};
+
+const NewChatModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg">
+                <h2 className="text-lg font-bold mb-4">새 채팅방</h2>
+                <p className="mb-4">새 채팅방 모달이 구현되지 않았습니다.</p>
+                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
+            </div>
+        </div>
+    );
+};
+
+const NewVideoConferenceModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg">
+                <h2 className="text-lg font-bold mb-4">새 화상회의</h2>
+                <p className="mb-4">새 화상회의 모달이 구현되지 않았습니다.</p>
+                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
+            </div>
+        </div>
+    );
+};
 
 export const TeamProjectSidebar: React.FC = () => {
     const { currentWorkspace } = useWorkspace();
@@ -30,32 +65,21 @@ export const TeamProjectSidebar: React.FC = () => {
 
   useEffect(() => {
     if (currentWorkspace) {
-      teamApi.getTeams(currentWorkspace.id)
-        .then(response => {
-          // API 응답이 객체이고 data 속성이 배열인 경우에만 상태를 업데이트합니다.
-          if (response && Array.isArray((response as any).data)) {
-            setTeamProjects((response as any).data);
-          } else if (Array.isArray(response)) {
-            // 혹시라도 API가 배열을 직접 반환하는 경우를 대비합니다.
-            setTeamProjects(response);
-          } else {
-            // 그 외의 경우, 빈 배열로 설정하여 오류를 방지합니다.
-            setTeamProjects([]);
-          }
+      teamApi.getTeams(currentWorkspace.id.toString())
+        .then(teams => {
+          setTeamProjects(teams);
         })
         .catch(error => {
           console.error("팀 목록을 불러오는데 실패했습니다:", error);
-          setTeamProjects([]); // 에러 발생 시 빈 배열로 설정합니다.
+          setTeamProjects([]);
         });
     }
-  }, [currentWorkspace]);
-
-    const handleTeamCreated = (newTeam: Team) => {
+  }, [currentWorkspace]);    const handleTeamCreated = (newTeam: Team) => {
         setTeamProjects(prev => [...prev, newTeam]);
         if (currentWorkspace) {
-            navigate(`/ws/${currentWorkspace.id}/teams/${newTeam.id}`);
+            navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
         }
-  };
+    };
 
     const isFeatureActive = (path: string) => location.pathname.includes(path);
 
@@ -88,9 +112,9 @@ export const TeamProjectSidebar: React.FC = () => {
                         {teamProjects.map(team => (
                             <li key={team.id}>
                                 <Link 
-                                    to={`/ws/${workspaceId}/teams/${team.id}`} 
-                                    className={`flex items-center space-x-2 p-2 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600 ${teamId === team.id ? 'bg-neutral-200 dark:bg-neutral-600 font-semibold' : ''}`}
-                >
+                                    to={`/ws/${workspaceId}/team/${team.id}`} 
+                                    className={`flex items-center space-x-2 p-2 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600 ${teamId === team.id.toString() ? 'bg-neutral-200 dark:bg-neutral-600 font-semibold' : ''}`}
+                                >
                                     {team.passwordProtected ? <LockClosedIcon className="h-4 w-4 text-neutral-500" /> : <UsersIcon className="h-4 w-4 text-neutral-500" />}
                                     <span className="truncate">{team.name}</span>
                                 </Link>

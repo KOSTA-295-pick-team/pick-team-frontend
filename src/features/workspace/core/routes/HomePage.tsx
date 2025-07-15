@@ -12,6 +12,7 @@ import { workspaceApi } from '@/features/workspace/management/api/workspaceApi';
 import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { UserIcon, UsersIcon } from '@/assets/icons';
 import TeamActionModal from '@/features/teamspace/team/components/TeamActionModal';
+import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
 
 export const HomePage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -137,12 +138,14 @@ export const HomePage: React.FC = () => {
 
 
   return (
-    <div className="space-y-8">
-      <Card>
-        <h1 className="text-2xl font-bold text-neutral-800">안녕하세요, {currentUser.name || '사용자'}님!</h1>
-        <p className="text-neutral-600 mt-1">{currentWorkspace.name} 워크스페이스입니다.</p>
-                        <p className="text-neutral-600 mt-2">오늘도 PickTeam과 함께 성공적인 프로젝트를 만들어보세요.</p>
-      </Card>
+    <div className="flex">
+      <TeamProjectSidebar />
+      <div className="flex-1 ml-64 p-4 sm:p-6 lg:p-8 space-y-8">
+        <Card>
+          <h1 className="text-2xl font-bold text-neutral-800">안녕하세요, {currentUser.name || '사용자'}님!</h1>
+          <p className="text-neutral-600 mt-1">{currentWorkspace.name} 워크스페이스입니다.</p>
+                          <p className="text-neutral-600 mt-2">오늘도 PickTeam과 함께 성공적인 프로젝트를 만들어보세요.</p>
+        </Card>
 
       {/* My Teams Section */}
       <Card title="내 팀 목록">
@@ -448,6 +451,7 @@ export const HomePage: React.FC = () => {
         isOpen={isTeamActionModalOpen}
         onClose={() => setIsTeamActionModalOpen(false)}
       />
+      </div>
     </div>
   );
 };

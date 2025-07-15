@@ -103,6 +103,7 @@ const TeamBulletinBoard: React.FC<{ teamProjectId: string, boardId: number, curr
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
+    const [actualBoardId, setActualBoardId] = useState<number>(boardId);
     
     const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
     const [newPostData, setNewPostData] = useState<{title: string, content: string}>({title: '', content: ''});
@@ -132,22 +133,47 @@ const TeamBulletinBoard: React.FC<{ teamProjectId: string, boardId: number, curr
         if (!hasMore && page !== 0) return;
         setIsLoading(true);
         try {
-            const response = await bulletinApi.getPosts(teamProjectId, boardId, page, 20);
-            const apiPosts: BulletinPost[] = response.content.map((p: PostResponse) => mapApiPostToState(p, teamProjectId, boardId));
+            const response = await bulletinApi.getPosts(teamProjectId, actualBoardId, page, 20);
+            const apiPosts: BulletinPost[] = response.content.map((p: PostResponse) => mapApiPostToState(p, teamProjectId, actualBoardId));
 
             setPosts(prev => page === 0 ? apiPosts : [...prev, ...apiPosts]);
             setHasMore(!response.last);
         } catch (error) {
             console.error("게시글 로딩 실패:", error);
+            setPosts([]);
+            setHasMore(false);
         } finally {
             setIsLoading(false);
         }
-    }, [teamProjectId, boardId, page, hasMore]);
+    }, [teamProjectId, actualBoardId, page, hasMore]);
 
     useEffect(()=> {
-        setPage(0);
-        setPosts([]);
-        setHasMore(true);
+        const findExistingBoard = async () => {
+            setPage(0);
+            setPosts([]);
+            setHasMore(true);
+            
+            // 여러 가능한 boardId 시도 (1, 팀ID, 팀ID+1000 등)
+            const possibleBoardIds = [1, parseInt(teamProjectId), parseInt(teamProjectId) + 1000];
+            
+            for (const testBoardId of possibleBoardIds) {
+                try {
+                    console.log(`boardId ${testBoardId} 시도 중...`);
+                    const response = await bulletinApi.getPosts(teamProjectId, testBoardId, 0, 1);
+                    console.log(`boardId ${testBoardId} 성공!`, response);
+                    setActualBoardId(testBoardId);
+                    return; // 성공하면 중단
+                } catch (error) {
+                    console.log(`boardId ${testBoardId} 실패:`, error);
+                }
+            }
+            
+            // 모든 시도 실패 시 기본값 사용
+            console.log('모든 boardId 시도 실패, 기본값 사용');
+            setActualBoardId(boardId);
+        };
+        
+        findExistingBoard();
     }, [teamProjectId, boardId]);
 
     useEffect(()=> {
@@ -164,12 +190,18 @@ const TeamBulletinBoard: React.FC<{ teamProjectId: string, boardId: number, curr
             alert("제목과 내용을 모두 입력해주세요.");
             return;
         }
+        
+        console.log('게시글 생성 시작:', { teamProjectId, actualBoardId, currentUser: currentUser.id });
+        
         try {
             const createRequest: PostCreateRequest = {
-                boardId: boardId,
+                boardId: actualBoardId, // actualBoardId 사용
                 title: newPostData.title,
                 content: newPostData.content,
             };
+            
+            console.log('게시글 생성 요청:', createRequest);
+            
             await bulletinApi.createPost(teamProjectId, String(currentUser.id), createRequest);
             setIsCreatePostModalOpen(false);
             // Re-load posts
@@ -178,7 +210,7 @@ const TeamBulletinBoard: React.FC<{ teamProjectId: string, boardId: number, curr
             setHasMore(true);
         } catch (error) {
             console.error("게시글 생성 실패:", error);
-            alert("게시글 생성에 실패했습니다.");
+            alert("게시글 생성에 실패했습니다. 게시판이 존재하지 않거나 권한이 없을 수 있습니다.");
         }
     };
     

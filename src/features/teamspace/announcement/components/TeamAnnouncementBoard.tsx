@@ -19,9 +19,17 @@ const TeamAnnouncementBoard: React.FC<{
     try {
       setIsLoading(true);
       const data = await announcementApi.getAnnouncements(workspaceId, Number(teamId));
-      setAnnouncements(data);
+      
+      // 안전장치: 응답이 배열인지 확인하고, 아니면 빈 배열로 설정
+      if (Array.isArray(data)) {
+        setAnnouncements(data);
+      } else {
+        console.warn('공지사항 응답이 배열이 아닙니다:', data);
+        setAnnouncements([]);
+      }
     } catch (error) {
       console.error("공지사항 로딩 실패:", error);
+      setAnnouncements([]); // 에러 발생 시 빈 배열로 설정
       // 사용자에게 에러 알림 처리 (예: 토스트 메시지)
     } finally {
       setIsLoading(false);
@@ -66,7 +74,7 @@ const TeamAnnouncementBoard: React.FC<{
     <Card title="📢 팀 공지사항" actions={<Button size="sm" onClick={() => setShowModal(true)} leftIcon={<PlusCircleIcon />}>공지 추가</Button>}>
       {isLoading ? (
         <p>공지사항을 불러오는 중...</p>
-      ) : announcements.length === 0 ? (
+      ) : !Array.isArray(announcements) || announcements.length === 0 ? (
         <p className="text-neutral-500">아직 공지사항이 없습니다.</p>
       ) : (
         <ul className="space-y-3">

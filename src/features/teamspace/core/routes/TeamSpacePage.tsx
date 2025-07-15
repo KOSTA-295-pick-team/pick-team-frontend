@@ -19,6 +19,7 @@ import TeamAnnouncementBoard from '@/features/teamspace/announcement/components/
 import TeamBulletinBoard from '@/features/teamspace/bulletin/components/TeamBulletinBoard';
 import TeamCalendar from '@/features/teamspace/schedule/components/TeamCalendar';
 import TeamKanbanBoard from '@/features/teamspace/kanban/components/TeamKanbanBoard';
+import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
 
 
 export const TeamSpacePage: React.FC = () => {
@@ -53,6 +54,10 @@ export const TeamSpacePage: React.FC = () => {
                 setLoading(true);
                 const teamData = await teamApi.getTeam(teamId);
                 const membersData = await teamApi.getMembers(teamId);
+                
+                // 디버깅용 로그
+                console.log('팀 데이터:', teamData);
+                console.log('bulletinBoardId:', teamData.bulletinBoardId);
                 
                 setTeam(teamData);
                 setTeamMembers(membersData);
@@ -156,7 +161,9 @@ export const TeamSpacePage: React.FC = () => {
             contentToRender = <TeamAnnouncementBoard teamId={teamId} workspaceId={workspaceId} currentUser={currentUser} />;
             break;
         case 'bulletin':
-            contentToRender = team.bulletinBoardId ? <TeamBulletinBoard teamProjectId={teamId} boardId={team.bulletinBoardId} currentUser={currentUser} /> : <p>게시판을 찾을 수 없습니다.</p>;
+            // bulletinBoardId가 없을 때는 팀 ID를 사용하거나 기본값 사용
+            const boardId = team.bulletinBoardId || parseInt(teamId) || 1;
+            contentToRender = <TeamBulletinBoard teamProjectId={teamId} boardId={boardId} currentUser={currentUser} />;
             break;
         case 'calendar': 
             contentToRender = <TeamCalendar teamId={teamId} currentUser={currentUser} />; 
@@ -169,56 +176,59 @@ export const TeamSpacePage: React.FC = () => {
     }
 
     return (
-        <div className="space-y-6">
-            <header className="flex justify-between items-center pb-4 border-b">
-                <div>
-                    <h1 className="text-3xl font-bold">{team.name}</h1>
-                    <p className="text-neutral-500 mt-1">{team.description}</p>
-                </div>
-                <div className="relative">
-                    <Button variant="outline" onClick={() => setShowTeamSettingsDropdown(prev => !prev)} rightIcon={<CogIcon />}>
-                        팀 설정
-                    </Button>
-                    {showTeamSettingsDropdown && (
-                        <Card className="absolute top-full right-0 mt-2 w-48 z-20">
-                            <ul className="text-sm">
-                                <li>
-                                    <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleLeaveTeam}>
-                                        팀 탈퇴하기
-                                    </Button>
-                                </li>
-                            </ul>
-                        </Card>
-                    )}
-                </div>
-            </header>
+        <div className="flex">
+            <TeamProjectSidebar />
+            <div className="flex-1 ml-64 p-4 sm:p-6 lg:p-8 space-y-6">
+                <header className="flex justify-between items-center pb-4 border-b">
+                    <div>
+                        <h1 className="text-3xl font-bold">{team.name}</h1>
+                        <p className="text-neutral-500 mt-1">{team.description}</p>
+                    </div>
+                    <div className="relative">
+                        <Button variant="outline" onClick={() => setShowTeamSettingsDropdown(prev => !prev)} rightIcon={<CogIcon />}>
+                            팀 설정
+                        </Button>
+                        {showTeamSettingsDropdown && (
+                            <Card className="absolute top-full right-0 mt-2 w-48 z-20">
+                                <ul className="text-sm">
+                                    <li>
+                                        <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleLeaveTeam}>
+                                            팀 탈퇴하기
+                                        </Button>
+                                    </li>
+                                </ul>
+                            </Card>
+                        )}
+                    </div>
+                </header>
 
-            <nav className="flex space-x-1 border-b">
-                <TabButton name="announcements" activeTab={activeTab} onClick={handleTabChange} icon={<ClipboardDocumentListIcon />}>공지사항</TabButton>
-                <TabButton name="bulletin" activeTab={activeTab} onClick={handleTabChange} icon={<ChatBubbleBottomCenterTextIcon />}>게시판</TabButton>
-                <TabButton name="kanban" activeTab={activeTab} onClick={handleTabChange} icon={<TableCellsIcon />}>칸반보드</TabButton>
-                <TabButton name="calendar" activeTab={activeTab} onClick={handleTabChange} icon={<CalendarDaysIcon />}>캘린더</TabButton>
-            </nav>
+                <nav className="flex space-x-1 border-b">
+                    <TabButton name="announcements" activeTab={activeTab} onClick={handleTabChange} icon={<ClipboardDocumentListIcon />}>공지사항</TabButton>
+                    <TabButton name="bulletin" activeTab={activeTab} onClick={handleTabChange} icon={<ChatBubbleBottomCenterTextIcon />}>게시판</TabButton>
+                    <TabButton name="kanban" activeTab={activeTab} onClick={handleTabChange} icon={<TableCellsIcon />}>칸반보드</TabButton>
+                    <TabButton name="calendar" activeTab={activeTab} onClick={handleTabChange} icon={<CalendarDaysIcon />}>캘린더</TabButton>
+                </nav>
 
-            <main>
-                {contentToRender}
-            </main>
-            
-            {showLeaveTeamModal && (
-              <Modal
-                isOpen={showLeaveTeamModal}
-                onClose={() => setShowLeaveTeamModal(false)}
-                title="팀 탈퇴 확인"
-                footer={
-                    <>
-                        <Button variant="ghost" onClick={() => setShowLeaveTeamModal(false)}>취소</Button>
-                        <Button variant="danger" onClick={handleLeaveTeam}>탈퇴 확인</Button>
-                    </>
-                }
-              >
-                  <p>정말로 '{team.name}' 팀을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
-              </Modal>
-            )}
+                <main>
+                    {contentToRender}
+                </main>
+                
+                {showLeaveTeamModal && (
+                  <Modal
+                    isOpen={showLeaveTeamModal}
+                    onClose={() => setShowLeaveTeamModal(false)}
+                    title="팀 탈퇴 확인"
+                    footer={
+                        <>
+                            <Button variant="ghost" onClick={() => setShowLeaveTeamModal(false)}>취소</Button>
+                            <Button variant="danger" onClick={handleLeaveTeam}>탈퇴 확인</Button>
+                        </>
+                    }
+                  >
+                      <p>정말로 '{team.name}' 팀을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
+                  </Modal>
+                )}
+            </div>
         </div>
     );
 };
