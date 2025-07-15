@@ -402,20 +402,21 @@ class SseService {
     }
   }
 
-  // 연결 상태 확인
+  // 연결 상태 확인 (더 관대한 다중 연결 환경 고려)
   isEventSourceConnected(): boolean {
     const connected = this.isConnected && this.eventSource?.readyState === EventSource.OPEN;
     
-    // 연결 상태 불일치 감지
+    // 연결 상태 불일치 감지 (다중 연결 환경에서 더 신중하게)
     if (this.isConnected && this.eventSource?.readyState !== EventSource.OPEN) {
-      console.warn('⚠️ 연결 상태 불일치 감지:', {
+      console.warn('⚠️ 연결 상태 불일치 감지 (다중 연결 환경):', {
         isConnected: this.isConnected,
         readyState: this.eventSource?.readyState,
         readyStateText: this.getReadyStateText(),
-        shouldReconnect: true
+        shouldReconnect: true,
+        info: '백엔드 다중 세션 지원으로 더 안정적'
       });
       
-      // 상태 동기화
+      // 상태 동기화 (다중 연결에서는 덜 공격적으로)
       this.isConnected = false;
       return false;
     }
@@ -438,19 +439,19 @@ class SseService {
     };
   }
 
-  // 하트비트 시작 (연결 상태 모니터링)
+  // 하트비트 시작 (다중 연결 환경 최적화)
   private startHeartbeat(): void {
     this.stopHeartbeat(); // 기존 하트비트 중지
     
     this.heartbeatInterval = setInterval(() => {
       const status = this.getConnectionStatus();
-      console.log('💓 하트비트 체크:', status);
+      console.log('💓 하트비트 체크 (다중세션 지원):', status);
       
       if (!this.isEventSourceConnected()) {
-        console.log('💔 SSE 연결 끊어짐 감지, 재연결 시도');
+        console.log('💔 SSE 연결 끊어짐 감지, 재연결 시도 (백엔드 다중세션 지원으로 안정성 향상)');
         this.scheduleReconnect();
       }
-    }, 6000); // 6초마다 연결 상태 체크 (타임아웃보다 짧게)
+    }, 8000); // 다중 연결에서는 더 여유롭게 8초마다 체크
   }
 
   // 하트비트 중지
@@ -462,7 +463,7 @@ class SseService {
     }
   }
 
-  // 연결 건강성 체크 시작
+  // 연결 건강성 체크 시작 (다중 연결 환경 최적화)
   private startConnectionHealthCheck(): void {
     this.stopConnectionHealthCheck(); // 기존 체크 중지
     
@@ -470,28 +471,29 @@ class SseService {
       const timeSinceLastMessage = Date.now() - this.lastMessageTime;
       const status = this.getConnectionStatus();
       
-      console.log('🔍 연결 건강성 체크:', {
+      console.log('🔍 연결 건강성 체크 (다중세션):', {
         ...status,
-        timeSinceLastMessage: Math.round(timeSinceLastMessage / 1000) + 's'
+        timeSinceLastMessage: Math.round(timeSinceLastMessage / 1000) + 's',
+        multiSessionSupport: true
       });
       
-      // 더 관대한 타임아웃 설정 (20초)
-      if (timeSinceLastMessage > 20000) {
-        console.log(`⚠️ ${Math.round(timeSinceLastMessage/1000)}초간 메시지 없음, 연결 품질 체크`);
+      // 다중 연결 환경에서는 더 관대한 타임아웃 (30초)
+      if (timeSinceLastMessage > 30000) {
+        console.log(`⚠️ ${Math.round(timeSinceLastMessage/1000)}초간 메시지 없음, 연결 품질 체크 (백엔드 다중세션 지원)`);
         
         // EventSource 상태를 다시 확인
         if (this.eventSource?.readyState !== EventSource.OPEN) {
           console.log('💔 EventSource 상태 이상 감지, 재연결 시도');
           this.scheduleReconnect();
         } else {
-          // 30초가 넘으면 예방적 재연결
-          if (timeSinceLastMessage > 30000) {
-            console.log('🔄 30초 이상 무응답, 예방적 재연결');
+          // 45초가 넘으면 예방적 재연결 (다중 연결에서는 더 여유롭게)
+          if (timeSinceLastMessage > 45000) {
+            console.log('🔄 45초 이상 무응답, 예방적 재연결 (다중세션 환경)');
             this.scheduleReconnect();
           }
         }
       }
-    }, 5000); // 5초마다 건강성 체크
+    }, 6000); // 6초마다 건강성 체크 (다중 연결에서도 적당한 주기)
   }
 
   // 연결 건강성 체크 중지
@@ -645,17 +647,45 @@ class SseService {
     console.log('🏥 SSE 연결 진단 결과:', diagnosis);
     return diagnosis;
   }
+
+  // 다중 연결 환경 디버깅 기능 추가
+  getMultiConnectionDiagnosis(): any {
+    const diagnosis = this.diagnoseConnection();
+    
+    // 백엔드 다중 세션 상태 확인 API 호출
+    fetch('/api/sse/debug')
+      .then(response => response.json())
+      .then(backendStatus => {
+        console.log('🔍 백엔드 다중 세션 상태:', backendStatus);
+        diagnosis.backendMultiSession = backendStatus;
+      })
+      .catch(error => {
+        console.warn('⚠️ 백엔드 상태 확인 실패:', error);
+        diagnosis.backendMultiSession = { error: error.message };
+      });
+    
+    return {
+      ...diagnosis,
+      multiConnectionSupport: true,
+      optimizations: {
+        heartbeatInterval: '8초 (다중 연결 최적화)',
+        healthCheckInterval: '6초',
+        connectionTimeout: '5분 (300초)',
+        messageTimeout: '45초 (관대한 설정)'
+      }
+    };
+  }
 }
 
 // 싱글톤 인스턴스
 export const sseService = new SseService();
 
-// 전역에서 SSE 상태 확인 가능
+// 전역에서 SSE 상태 확인 가능 (다중 연결 지원)
 (window as any).debugSSE = () => {
-  const diagnosis = sseService.diagnoseConnection();
+  const diagnosis = sseService.getMultiConnectionDiagnosis();
   
   // 네트워크 요청 모니터링 활성화
-  console.log('🌐 네트워크 모니터링 활성화 중...');
+  console.log('🌐 네트워크 모니터링 활성화 중... (다중 세션 지원)');
   
   // Performance API로 네트워크 요청 추적
   const entries = performance.getEntriesByType('navigation').concat(
@@ -672,10 +702,13 @@ export const sseService = new SseService();
   return {
     diagnosis,
     networkEntries: sseEntries,
+    multiConnection: true,
     actions: {
       forceCheck: () => sseService.forceConnectionCheck(),
-      reconnect: () => sseService.forceConnectionCheck(), // 강제 체크를 통해 재연결 유도
-      disconnect: () => sseService.disconnect()
+      reconnect: () => sseService.forceConnectionCheck(),
+      disconnect: () => sseService.disconnect(),
+      getBackendStatus: () => fetch('/api/sse/debug').then(r => r.json()),
+      cleanupBackend: () => fetch('/api/sse/cleanup', {method: 'POST'}).then(r => r.json())
     }
   };
 };
