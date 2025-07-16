@@ -13,6 +13,7 @@ import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { UserIcon, UsersIcon } from '@/assets/icons';
 import TeamActionModal from '@/features/teamspace/team/components/TeamActionModal';
 import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
+import { getProfileImageSrc, handleImageError } from '@/lib/imageUtils';
 
 export const HomePage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -284,9 +285,10 @@ export const HomePage: React.FC = () => {
                     <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
                       {member.profileImageUrl ? (
                         <img 
-                          src={member.profileImageUrl} 
+                          src={getProfileImageSrc(member.profileImageUrl, member.id, 64)} 
                           alt={member.name}
                           className="w-full h-full object-cover"
+                          onError={(e) => handleImageError(e, member.id, 64)}
                         />
                       ) : (
                         <UserIcon className="w-8 h-8 text-primary" />
@@ -363,9 +365,10 @@ export const HomePage: React.FC = () => {
                   <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
                     {member.profileImageUrl ? (
                       <img 
-                        src={member.profileImageUrl} 
+                        src={getProfileImageSrc(member.profileImageUrl, member.id, 40)} 
                         alt={member.name}
                         className="w-full h-full object-cover"
+                        onError={(e) => handleImageError(e, member.id, 40)}
                       />
                     ) : (
                       <UserIcon className="w-5 h-5 text-primary" />
@@ -411,9 +414,10 @@ export const HomePage: React.FC = () => {
               <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
                 {selectedMember.profileImageUrl ? (
                   <img 
-                    src={selectedMember.profileImageUrl} 
+                    src={getProfileImageSrc(selectedMember.profileImageUrl, selectedMember.id, 96)} 
                     alt={selectedMember.name}
                     className="w-full h-full object-cover"
+                    onError={(e) => handleImageError(e, selectedMember.id, 96)}
                   />
                 ) : (
                   <UserIcon className="w-12 h-12 text-primary" />

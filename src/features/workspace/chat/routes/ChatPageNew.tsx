@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { useChat } from '../context/ChatContext';
 import { Card, TextArea, Button } from '@/components/ui';
+import { getFileUrl } from '@/lib/imageUtils';
 import { XCircleIcon } from '@/assets/icons';
 
 export const ChatPage: React.FC = () => {
@@ -80,9 +81,9 @@ export const ChatPage: React.FC = () => {
               {msg.attachment && (
                 <div className="mb-1 p-2 border border-neutral-300 rounded bg-white/50">
                   {msg.attachment.type === 'image' ? (
-                    <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
+                    <img src={getFileUrl(msg.attachment.url) || msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
                   ) : (
-                    <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
+                    <a href={getFileUrl(msg.attachment.url) || msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
                       <XCircleIcon className="w-4 h-4 mr-1"/> {msg.attachment.fileName}
                     </a>
                   )}
