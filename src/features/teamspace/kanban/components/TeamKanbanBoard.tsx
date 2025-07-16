@@ -177,12 +177,12 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
 
   const handleSave = () => {
     onUpdateCard(card.id, {
-      title: editedTitle,
+      subject: editedTitle,
       content: editedDescription,
       deadline: editedDeadline
         ? new Date(editedDeadline).toISOString()
         : undefined,
-      assigneeIds: editedAssigneeIds.map(String),
+      assigneeIds: editedAssigneeIds.map(String), // 문자열 배열로 변환
     });
   };
 
@@ -426,9 +426,10 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
                     </h4>
                     <div className="flex flex-wrap gap-2">
                       {editedAssigneeIds.map((assigneeId) => {
-                        const member = teamMembers.find(
-                          (m) => m.id === assigneeId
-                        );
+                        const member = teamMembers.find((m) => {
+                          const memberAccountId = (m as any).accountId || m.id;
+                          return memberAccountId === assigneeId;
+                        });
 
                         return member ? (
                           <div
@@ -865,38 +866,43 @@ const TrelloStyleModal: React.FC<TrelloStyleModalProps> = ({
               >
                 <h4 className="font-medium mb-3">담당자 선택</h4>
                 <div className="space-y-2">
-                  {teamMembers.map((member) => (
-                    <div
-                      key={member.id}
-                      onClick={() => {
-                        toggleAssignee(member.id);
-                      }}
-                      className={`flex items-center space-x-3 p-2 rounded-md cursor-pointer transition-colors ${
-                        editedAssigneeIds.includes(member.id)
-                          ? "bg-blue-50 border border-blue-200"
-                          : "hover:bg-neutral-50 border border-transparent"
-                      }`}
-                    >
-                      <img
-                        src={
-                          member.profileImageUrl ||
-                          `https://i.pravatar.cc/150?u=${member.id}`
-                        }
-                        alt={member.name}
-                        className="w-8 h-8 rounded-full border border-neutral-200"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">
-                          {member.name}
-                        </span>
+                  {teamMembers.map((member) => {
+                    // accountId가 있으면 사용하고, 없으면 id 사용 (백엔드 호환성)
+                    const memberAccountId =
+                      (member as any).accountId || member.id;
+                    return (
+                      <div
+                        key={member.id}
+                        onClick={() => {
+                          toggleAssignee(memberAccountId);
+                        }}
+                        className={`flex items-center space-x-3 p-2 rounded-md cursor-pointer transition-colors ${
+                          editedAssigneeIds.includes(memberAccountId)
+                            ? "bg-blue-50 border border-blue-200"
+                            : "hover:bg-neutral-50 border border-transparent"
+                        }`}
+                      >
+                        <img
+                          src={
+                            member.profileImageUrl ||
+                            `https://i.pravatar.cc/150?u=${member.id}`
+                          }
+                          alt={member.name}
+                          className="w-8 h-8 rounded-full border border-neutral-200"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            {member.name}
+                          </span>
+                        </div>
+                        {editedAssigneeIds.includes(memberAccountId) && (
+                          <span className="text-blue-500 text-sm font-medium">
+                            ✓
+                          </span>
+                        )}
                       </div>
-                      {editedAssigneeIds.includes(member.id) && (
-                        <span className="text-blue-500 text-sm font-medium">
-                          ✓
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="flex justify-end mt-3 space-x-2">
                   <Button
@@ -1122,13 +1128,149 @@ const TeamKanbanBoard: React.FC<{
     updatedCard: KanbanTaskUpdateRequest
   ) => {
     try {
-      const updatedTaskDto = await kanbanApi.updateTask(cardId, {
-        ...updatedCard,
-        kanbanListId: updatedCard.kanbanListId
-          ? parseInt(updatedCard.kanbanListId)
-          : undefined,
-        assigneeIds: updatedCard.assigneeIds?.map((id) => parseInt(id)),
-      });
+      // API 요청 데이터 준비 및 검증
+      const requestData: any = {};
+
+      // 필수/변경된 필드만 추가
+      if (updatedCard.subject !== undefined) {
+        requestData.subject = updatedCard.subject;
+      }
+
+      if (updatedCard.content !== undefined) {
+        requestData.content = updatedCard.content || ""; // 빈 문자열로 유지
+      }
+
+      if (updatedCard.deadline !== undefined) {
+        if (updatedCard.deadline) {
+          // deadline이 있는 경우, 날짜 형식 검증
+          const deadlineDate = new Date(updatedCard.deadline);
+          if (!isNaN(deadlineDate.getTime())) {
+            requestData.deadline = deadlineDate.toISOString();
+          }
+        } else {
+          requestData.deadline = null; // 마감일 제거
+        }
+      }
+
+      // kanbanListId 처리 - 카드 이동시에만 필요
+      // 일반적인 카드 정보 업데이트에서는 kanbanListId를 제외
+
+      // order 처리
+      if (updatedCard.order !== undefined) {
+        requestData.order = updatedCard.order;
+      }
+
+      // isApproved 처리
+      if (updatedCard.isApproved !== undefined) {
+        requestData.isApproved = updatedCard.isApproved;
+      }
+
+      // assigneeIds 처리 - 팀 멤버 검증 포함 및 에러 방지
+      if (updatedCard.assigneeIds !== undefined) {
+        // 빈 배열도 처리하도록 수정
+        // 빈 배열인 경우 (모든 담당자 제거)
+        if (updatedCard.assigneeIds.length === 0) {
+          requestData.assigneeIds = [];
+          console.log("Removing all assignees (empty array)");
+        } else {
+          // 담당자가 있는 경우
+          // 팀 멤버들의 실제 ID 확인 및 매핑
+          // User 타입이지만 실제로는 TeamMemberResponse일 수 있으므로 accountId도 확인
+          const validTeamMemberIds = teamMembers
+            .map((member) => {
+              // accountId가 있으면 그것을 사용, 없으면 id 사용
+              const memberId = (member as any).accountId || member.id;
+              const parsedId = parseInt(memberId.toString());
+              console.log("Team member detail:", {
+                id: member.id,
+                accountId: (member as any).accountId,
+                name: member.name,
+                finalId: memberId,
+                parsedId: parsedId,
+                type: typeof memberId,
+              });
+              return parsedId;
+            })
+            .filter((id) => !isNaN(id) && id > 0);
+
+          const currentUserId = parseInt(currentUser.id.toString());
+          const requestedIds = updatedCard.assigneeIds.map((id) =>
+            parseInt(id)
+          );
+
+          // 현재 사용자 ID도 유효한 팀 멤버인지 확인
+          if (!validTeamMemberIds.includes(currentUserId)) {
+            console.warn(
+              "Current user not found in team members, adding to valid IDs"
+            );
+            validTeamMemberIds.push(currentUserId);
+          }
+
+          const validAssigneeIds = requestedIds.filter(
+            (id) => !isNaN(id) && id > 0 && validTeamMemberIds.includes(id)
+          );
+
+          // 디버깅: 팀 멤버 ID와 할당하려는 ID 확인
+          console.log("Current user ID:", currentUserId);
+          console.log(
+            "Team members raw data:",
+            teamMembers.map((m) => ({
+              id: m.id,
+              accountId: (m as any).accountId,
+              name: m.name,
+              email: m.email,
+            }))
+          );
+          console.log("Valid team member IDs:", validTeamMemberIds);
+          console.log("Requested assignee IDs:", requestedIds);
+          console.log("Final valid assignee IDs:", validAssigneeIds);
+
+          // 유효한 assignee가 있을 때만 요청에 포함
+          if (validAssigneeIds.length > 0) {
+            requestData.assigneeIds = validAssigneeIds;
+          } else {
+            console.error("No valid assignee IDs found!");
+            console.error(
+              "This indicates a serious data synchronization issue"
+            );
+            console.error("Requested IDs:", requestedIds);
+            console.error("Available team member IDs:", validTeamMemberIds);
+
+            // 에러 상황에서는 assigneeIds 업데이트를 건너뛰고 기존 담당자 유지
+            console.warn("Skipping assigneeIds update to prevent server error");
+            // requestData에 assigneeIds를 포함하지 않음
+          }
+
+          // 유효하지 않은 ID가 있으면 경고 표시
+          const invalidIds = requestedIds.filter(
+            (id) => !validTeamMemberIds.includes(id)
+          );
+          if (invalidIds.length > 0) {
+            console.error("Invalid assignee IDs detected:", invalidIds);
+            console.error("This might indicate a data synchronization issue");
+            // 사용자에게 알림
+            alert(
+              `일부 담당자 정보를 찾을 수 없습니다. (ID: ${invalidIds.join(
+                ", "
+              )})\n현재 유효한 담당자로만 업데이트됩니다.`
+            );
+          }
+        }
+      }
+
+      // 디버깅을 위한 로그
+      console.log("Updating card with data:", requestData);
+      console.log("assigneeIds details:", requestData.assigneeIds);
+      console.log(
+        "assigneeIds type check:",
+        requestData.assigneeIds?.map((id: any) => ({
+          id,
+          type: typeof id,
+          isValid: !isNaN(id) && id > 0,
+        }))
+      );
+
+      const updatedTaskDto = await kanbanApi.updateTask(cardId, requestData);
 
       // 로컬 상태 즉시 업데이트
       setBoard((prevBoard) => {
@@ -1175,9 +1317,23 @@ const TeamKanbanBoard: React.FC<{
           })),
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("태스크 업데이트 실패:", error);
-      alert("태스크 업데이트에 실패했습니다.");
+
+      // 더 구체적인 에러 메시지 제공
+      let errorMessage = "태스크 업데이트에 실패했습니다.";
+      if (error.message) {
+        if (error.message.includes("500")) {
+          errorMessage +=
+            " 서버 내부 오류가 발생했습니다. 입력한 정보를 다시 확인해주세요.";
+        } else if (error.message.includes("400")) {
+          errorMessage += " 입력한 정보가 올바르지 않습니다.";
+        } else if (error.message.includes("404")) {
+          errorMessage += " 해당 태스크를 찾을 수 없습니다.";
+        }
+      }
+
+      alert(errorMessage);
     }
   };
 
