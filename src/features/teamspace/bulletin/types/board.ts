@@ -1,5 +1,5 @@
 export interface BulletinAttachment {
-  id: string;
+  id: number; // string에서 number로 변경
   postId: number;
   fileName: string;
   fileUrl: string;
@@ -106,4 +106,4 @@ export interface CommentPageResponse {
   last: boolean;
   hasNext: boolean;
   hasPrevious: boolean;
-} 
+}

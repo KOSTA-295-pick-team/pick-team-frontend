@@ -7,6 +7,7 @@ import {
   CommentResponse,
 } from "@/types";
 import * as thunks from "@/features/teamspace/bulletin/store/bulletinThunks";
+import * as postThunks from "@/features/teamspace/bulletin/store/postThunks";
 
 // PostResponse -> BulletinPost 변환 함수
 const mapPostResponseToBulletinPost = (post: PostResponse): BulletinPost => ({
@@ -238,196 +239,22 @@ const bulletinSlice = createSlice({
         );
 
         state.posts = filteredPosts;
+        state.currentPage = action.payload.pageable.pageNumber;
         state.totalPages = action.payload.totalPages;
         state.totalElements = action.payload.totalElements;
-        const currentPage = action.meta.arg.page || 0;
-        state.currentPage = currentPage;
-        state.hasNext = currentPage < action.payload.totalPages - 1;
-        state.hasPrevious = currentPage > 0;
-        state.lastFetchPostsTime = Date.now(); // posts를 가져온 시간 기록
+        state.hasNext = !action.payload.last;
+        state.hasPrevious = !action.payload.first;
+        state.lastFetchPostsTime = Date.now();
 
-        console.log(
-          "[fetchPosts.fulfilled] posts 로드 완료 (첨부파일 필터링 후):",
-          {
-            postsCount: state.posts.length,
-            deletedAttachmentIds: state.deletedAttachmentIds,
-            fetchTime: state.lastFetchPostsTime,
-            resetTime: state.lastResetTime,
-          }
-        );
+        console.log("[Redux] fetchPosts.fulfilled - 상태 업데이트:", {
+          postsCount: state.posts.length,
+          currentPage: state.currentPage,
+          totalPages: state.totalPages,
+          filteredPostsCount: filteredPosts.length,
+          lastFetchPostsTime: state.lastFetchPostsTime,
+        });
       })
       .addCase(thunks.fetchPosts.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-
-      // 게시글 상세 조회
-      .addCase(thunks.fetchPost.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(thunks.fetchPost.fulfilled, (state, action) => {
-        state.loading = false;
-
-        const fetchTime = Date.now();
-
-        const serverPostAsBulletinPost = mapPostResponseToBulletinPost(
-          action.payload
-        );
-
-        // 서버 데이터에서 삭제된 첨부파일을 필터링
-        const serverPost = {
-          ...serverPostAsBulletinPost,
-          attachments: filterAttachments(
-            serverPostAsBulletinPost.attachments || [],
-            state.deletedAttachmentIds
-          ),
-        };
-
-        console.log(
-          "[fetchPost.fulfilled] 서버에서 게시글 데이터 수신 (필터링 후):",
-          {
-            postId: serverPost.id,
-            originalAttachments: action.payload.attachments?.length || 0,
-            filteredAttachments: serverPost.attachments.length,
-            deletedIds: state.deletedAttachmentIds,
-            serverAttachmentIds: serverPost.attachments.map((a: BulletinAttachment) => a.id),
-            currentPostExists: !!state.currentPost,
-            currentPostAttachments: state.currentPost?.attachments?.length || 0,
-            currentPostAttachmentIds:
-              state.currentPost?.attachments?.map((a: BulletinAttachment) => a.id) || [],
-            postsArrayLength: state.posts.length,
-            fetchTime,
-            lastFetchPostsTime: state.lastFetchPostsTime,
-            lastResetTime: state.lastResetTime,
-          }
-        );
-
-        // 현재 Redux에 해당 게시글이 있는지 확인
-        const existingCurrentPost =
-          state.currentPost?.id === serverPost.id ? state.currentPost : null;
-        const existingPostInArray = state.posts.find(
-          (p) => p.id === serverPost.id
-        );
-
-        // 세션 기반 상태 보존 조건 검사:
-        // 1. posts 배열의 데이터가 최근 reset 이후에 fetch된 것인지 확인
-        // 2. currentPost 또는 postsArray에 첨부파일이 있는지 확인
-        // 3. 클라이언트와 서버의 첨부파일이 다른지 확인
-        const isPostsFromCurrentSession =
-          state.lastFetchPostsTime > state.lastResetTime;
-        const currentPostHasAttachments =
-          (existingCurrentPost?.attachments?.length || 0) > 0;
-        const postsArrayHasAttachments =
-          (existingPostInArray?.attachments?.length || 0) > 0;
-        const serverAttachments = serverPost.attachments || [];
-
-        // 클라이언트와 서버의 첨부파일이 다른지 확인
-        let attachmentsDiffer = false;
-        if (currentPostHasAttachments) {
-          const clientIds = new Set(existingCurrentPost!.attachments!.map((a) => a.id));
-          const serverIds = new Set(serverAttachments.map((a) => a.id));
-          attachmentsDiffer = clientIds.size !== serverIds.size || [...clientIds].some(id => !serverIds.has(id));
-        } else if (postsArrayHasAttachments && isPostsFromCurrentSession) {
-          const clientIds = new Set(existingPostInArray!.attachments!.map((a) => a.id));
-          const serverIds = new Set(serverAttachments.map((a) => a.id));
-          attachmentsDiffer = clientIds.size !== serverIds.size || [...clientIds].some(id => !serverIds.has(id));
-        }
-
-        const shouldPreserveClientState =
-          isPostsFromCurrentSession &&
-          (currentPostHasAttachments || postsArrayHasAttachments) &&
-          attachmentsDiffer;
-
-        console.log("[fetchPost.fulfilled] 상태 보존 조건 검사:", {
-          isPostsFromCurrentSession,
-          currentPostHasAttachments,
-          postsArrayHasAttachments,
-          attachmentsDiffer,
-          shouldPreserveClientState,
-          clientCurrentPostIds:
-            existingCurrentPost?.attachments?.map((a: BulletinAttachment) => a.id) || [],
-          clientPostsArrayIds:
-            existingPostInArray?.attachments?.map((a: BulletinAttachment) => a.id) || [],
-          serverIds: serverAttachments.map((a: BulletinAttachment) => a.id),
-          timeDiffs: {
-            fetchPostsTime: state.lastFetchPostsTime,
-            resetTime: state.lastResetTime,
-            isFromCurrentSession:
-              state.lastFetchPostsTime > state.lastResetTime,
-          },
-        });
-
-        if (shouldPreserveClientState) {
-          // 현재 세션에서 수정된 클라이언트 상태가 있는 경우에만 보존
-          const attachmentsToUse =
-            existingCurrentPost?.attachments ||
-            existingPostInArray?.attachments ||
-            [];
-
-          console.log(
-            "[fetchPost.fulfilled] 클라이언트 상태 보존 (현재 세션에서 수정됨):",
-            {
-              source: existingCurrentPost ? "currentPost" : "postsArray",
-              preservedAttachments: attachmentsToUse.length,
-              preservedIds: attachmentsToUse.map((a) => a.id),
-              reason: "current_session_modifications",
-            }
-          );
-
-          state.currentPost = {
-            ...serverPost,
-            attachments: attachmentsToUse, // 기존 Redux 상태의 첨부파일 보존
-          };
-        } else {
-          // 새로운 세션이거나 첨부파일이 동일한 경우 서버 데이터 사용 (이미 필터링됨)
-          console.log("[fetchPost.fulfilled] 서버 데이터 사용 (필터링됨):", {
-            reason: !isPostsFromCurrentSession
-              ? "new_session"
-              : !currentPostHasAttachments && !postsArrayHasAttachments
-              ? "no_client_attachments"
-              : "attachments_same",
-            serverAttachments: serverPost.attachments.length,
-          });
-          state.currentPost = serverPost;
-        }
-
-        // posts 배열에서도 해당 게시글을 업데이트 (동일한 로직 적용)
-        const postIndex = state.posts.findIndex(
-          (post) => post.id === serverPost.id
-        );
-        if (postIndex !== -1) {
-          const existingAttachments = state.posts[postIndex].attachments;
-
-          if (
-            shouldPreserveClientState &&
-            existingAttachments &&
-            existingAttachments.length > 0
-          ) {
-            console.log(
-              "[fetchPost.fulfilled] posts 배열에서도 첨부파일 보존:",
-              {
-                preservedCount: existingAttachments.length,
-              }
-            );
-            state.posts[postIndex] = {
-              ...serverPost,
-              attachments: existingAttachments,
-            };
-          } else {
-            console.log(
-              "[fetchPost.fulfilled] posts 배열 - 서버 데이터 사용 (필터링됨)"
-            );
-            state.posts[postIndex] = serverPost;
-          }
-        } else {
-          // 새로운 게시글인 경우 posts 배열에 추가하지 않음 (목록에서 가져올 때만 추가)
-          console.log(
-            "[fetchPost.fulfilled] posts 배열에 해당 게시글 없음 - 추가하지 않음"
-          );
-        }
-      })
-      .addCase(thunks.fetchPost.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
@@ -439,7 +266,8 @@ const bulletinSlice = createSlice({
       })
       .addCase(thunks.createPost.fulfilled, (state, action) => {
         state.loading = false;
-        state.posts.unshift(mapPostResponseToBulletinPost(action.payload));
+        const newPost = mapPostResponseToBulletinPost(action.payload);
+        state.posts.unshift(newPost);
       })
       .addCase(thunks.createPost.rejected, (state, action) => {
         state.loading = false;
@@ -453,53 +281,17 @@ const bulletinSlice = createSlice({
       })
       .addCase(thunks.updatePost.fulfilled, (state, action) => {
         state.loading = false;
-        console.log(
-          "[updatePost.fulfilled] 게시글 업데이트, payload:",
-          action.payload
-        );
+        const updatedPost = mapPostResponseToBulletinPost(action.payload);
 
-        const updatedData = mapPostResponseToBulletinPost(action.payload);
-
-        // posts 배열에서 해당 게시글 찾아서 제목과 내용만 업데이트 (첨부파일은 유지)
-        const postIndex = state.posts.findIndex(
-          (post) => post.id === updatedData.id
-        );
+        // posts 배열에서 업데이트
+        const postIndex = state.posts.findIndex((p) => p.id === updatedPost.id);
         if (postIndex !== -1) {
-          console.log(
-            "[updatePost.fulfilled] posts 배열 업데이트, 기존 첨부파일 수:",
-            state.posts[postIndex].attachments?.length || 0
-          );
-          state.posts[postIndex] = {
-            ...state.posts[postIndex],
-            title: updatedData.title,
-            content: updatedData.content,
-            updatedAt:
-              updatedData.updatedAt || state.posts[postIndex].updatedAt,
-            // attachments는 의도적으로 업데이트하지 않음 (기존 Redux 상태 유지)
-          };
-          console.log(
-            "[updatePost.fulfilled] posts 배열 업데이트 완료, 유지된 첨부파일 수:",
-            state.posts[postIndex].attachments?.length || 0
-          );
+          state.posts[postIndex] = updatedPost;
         }
 
-        // currentPost도 동일하게 제목과 내용만 업데이트
-        if (state.currentPost?.id === updatedData.id) {
-          console.log(
-            "[updatePost.fulfilled] currentPost 업데이트, 기존 첨부파일 수:",
-            state.currentPost.attachments?.length || 0
-          );
-          state.currentPost = {
-            ...state.currentPost,
-            title: updatedData.title,
-            content: updatedData.content,
-            updatedAt: updatedData.updatedAt || state.currentPost.updatedAt,
-            // attachments는 의도적으로 업데이트하지 않음 (기존 Redux 상태 유지)
-          };
-          console.log(
-            "[updatePost.fulfilled] currentPost 업데이트 완료, 유지된 첨부파일 수:",
-            state.currentPost.attachments?.length || 0
-          );
+        // currentPost 업데이트
+        if (state.currentPost && state.currentPost.id === updatedPost.id) {
+          state.currentPost = updatedPost;
         }
       })
       .addCase(thunks.updatePost.rejected, (state, action) => {
@@ -514,9 +306,11 @@ const bulletinSlice = createSlice({
       })
       .addCase(thunks.deletePost.fulfilled, (state, action) => {
         state.loading = false;
-        state.posts = state.posts.filter((post) => post.id !== action.payload);
-        if (state.currentPost?.id === action.payload) {
+        const deletedPostId = action.payload;
+        state.posts = state.posts.filter((post) => post.id !== deletedPostId);
+        if (state.currentPost && state.currentPost.id === deletedPostId) {
           state.currentPost = null;
+          state.comments = [];
         }
       })
       .addCase(thunks.deletePost.rejected, (state, action) => {
@@ -534,6 +328,7 @@ const bulletinSlice = createSlice({
         state.comments = action.payload.content.map(
           mapCommentResponseToBulletinComment
         );
+        state.commentCurrentPage = action.payload.pageable.pageNumber;
         state.commentTotalPages = action.payload.totalPages;
         state.commentTotalElements = action.payload.totalElements;
       })
@@ -549,7 +344,8 @@ const bulletinSlice = createSlice({
       })
       .addCase(thunks.createComment.fulfilled, (state, action) => {
         state.loading = false;
-        state.comments.push(mapCommentResponseToBulletinComment(action.payload));
+        const newComment = mapCommentResponseToBulletinComment(action.payload);
+        state.comments.push(newComment);
       })
       .addCase(thunks.createComment.rejected, (state, action) => {
         state.loading = false;
@@ -563,12 +359,14 @@ const bulletinSlice = createSlice({
       })
       .addCase(thunks.updateComment.fulfilled, (state, action) => {
         state.loading = false;
-        const updatedComment = mapCommentResponseToBulletinComment(action.payload);
-        const index = state.comments.findIndex(
-          (comment) => comment.id === updatedComment.id
+        const updatedComment = mapCommentResponseToBulletinComment(
+          action.payload
         );
-        if (index !== -1) {
-          state.comments[index] = updatedComment;
+        const commentIndex = state.comments.findIndex(
+          (c) => c.id === updatedComment.id
+        );
+        if (commentIndex !== -1) {
+          state.comments[commentIndex] = updatedComment;
         }
       })
       .addCase(thunks.updateComment.rejected, (state, action) => {
@@ -583,8 +381,9 @@ const bulletinSlice = createSlice({
       })
       .addCase(thunks.deleteComment.fulfilled, (state, action) => {
         state.loading = false;
+        const deletedCommentId = action.payload;
         state.comments = state.comments.filter(
-          (comment) => comment.id !== action.payload
+          (c) => c.id !== deletedCommentId
         );
       })
       .addCase(thunks.deleteComment.rejected, (state, action) => {
@@ -592,163 +391,46 @@ const bulletinSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // 첨부파일 삭제
-      .addCase(thunks.deleteAttachment.pending, (state) => {
+      // === PostThunks 관련 (파일 업로드 포함) ===
+
+      // 파일 업로드 포함 게시글 생성
+      .addCase(postThunks.createPostWithFiles.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(thunks.deleteAttachment.fulfilled, (state, action) => {
+      .addCase(postThunks.createPostWithFiles.fulfilled, (state, action) => {
         state.loading = false;
-        const { postId, attachId } = action.payload;
+        const newPost = mapPostResponseToBulletinPost(action.payload);
+        state.posts.unshift(newPost);
+      })
+      .addCase(postThunks.createPostWithFiles.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
 
-        console.log("[bulletinSlice] deleteAttachment.fulfilled:", {
-          postId,
-          attachId,
-        });
+      // 파일 업로드 포함 게시글 수정
+      .addCase(postThunks.updatePostWithFiles.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(postThunks.updatePostWithFiles.fulfilled, (state, action) => {
+        state.loading = false;
+        const updatedPost = mapPostResponseToBulletinPost(action.payload);
 
-        // 삭제된 첨부파일 ID를 추가 (세션 간 유지)
-        if (!state.deletedAttachmentIds.includes(attachId)) {
-          state.deletedAttachmentIds.push(attachId);
+        // posts 배열 업데이트
+        const postIndex = state.posts.findIndex((p) => p.id === updatedPost.id);
+        if (postIndex !== -1) {
+          state.posts[postIndex] = updatedPost;
         }
 
-        // posts 배열에서 해당 게시글의 첨부파일 제거
-        const postIndex = state.posts.findIndex((post) => post.id === postId);
-        if (postIndex !== -1 && state.posts[postIndex].attachments) {
-          const beforeCount = state.posts[postIndex].attachments!.length;
-          state.posts[postIndex] = {
-            ...state.posts[postIndex],
-            attachments: state.posts[postIndex].attachments!.filter(
-              (att) => att.id !== attachId
-            ),
-          };
-          const afterCount = state.posts[postIndex].attachments?.length || 0;
-          console.log("[bulletinSlice] posts 배열 업데이트:", {
-            beforeCount,
-            afterCount,
-          });
-        }
-
-        // currentPost에서도 첨부파일 제거 (새 객체로 대체하여 변경 확실히 감지)
-        if (state.currentPost && state.currentPost.id === postId) {
-          const beforeCount = state.currentPost.attachments?.length || 0;
-          const beforeIds =
-            state.currentPost.attachments?.map((att) => att.id) || [];
-          state.currentPost = {
-            ...state.currentPost,
-            attachments:
-              state.currentPost.attachments?.filter(
-                (att) => att.id !== attachId
-              ) || [],
-          };
-          const afterCount = state.currentPost.attachments?.length || 0;
-          const afterIds =
-            state.currentPost.attachments?.map((att) => att.id) || [];
-          console.log("[bulletinSlice] currentPost 업데이트:", {
-            beforeCount,
-            afterCount,
-            beforeIds,
-            afterIds,
-            removedId: attachId,
-            newCurrentPost: state.currentPost,
-          });
+        // currentPost 업데이트
+        if (state.currentPost && state.currentPost.id === updatedPost.id) {
+          state.currentPost = updatedPost;
         }
       })
-      .addCase(thunks.deleteAttachment.rejected, (state, action) => {
+      .addCase(postThunks.updatePostWithFiles.rejected, (state, action) => {
         state.loading = false;
-
-        // action.meta.arg에서 postId와 attachId 추출
-        const { postId, attachId } = action.meta.arg as {
-          postId: number;
-          attachId: string;
-          accountId: string;
-        };
-
-        // payload에서 상세 에러 정보 추출
-        const errorInfo = action.payload as {
-          message: string;
-          status?: number;
-          responseText?: string;
-        };
-
-        console.log("[bulletinSlice] deleteAttachment.rejected 상세 정보:", {
-          postId,
-          attachId,
-          errorMessage: errorInfo.message,
-          status: errorInfo.status,
-          responseText: errorInfo.responseText,
-        });
-
-        // 에러 상태 설정
-        state.error = errorInfo.message;
-
-        // 404 (파일이 이미 삭제됨) 또는 400 (잘못된 요청이지만 파일이 존재하지 않음) 에러인 경우에만 UI에서 제거
-        // 이는 서버에서 해당 첨부파일이 실제로 존재하지 않음을 의미하므로 UI에서도 제거하는 것이 맞음
-        const shouldRemoveFromUI =
-          errorInfo.status === 404 ||
-          errorInfo.status === 400 ||
-          errorInfo.message?.includes("첨부파일을 찾을 수 없습니다") ||
-          errorInfo.message?.includes("존재하지 않") ||
-          errorInfo.responseText?.includes("404") ||
-          errorInfo.responseText?.includes("Not Found");
-
-        console.log("[bulletinSlice] UI 제거 결정:", {
-          shouldRemoveFromUI,
-          status: errorInfo.status,
-          isNotFoundError: errorInfo.status === 404,
-          isBadRequestError: errorInfo.status === 400,
-          messageContainsNotFound:
-            errorInfo.message?.includes("첨부파일을 찾을 수 없습니다"),
-        });
-
-        if (shouldRemoveFromUI) {
-          console.log(
-            "[bulletinSlice] 서버에 파일이 존재하지 않음 - UI에서 제거"
-          );
-
-          // 삭제된 첨부파일 ID를 추가 (세션 간 유지)
-          if (!state.deletedAttachmentIds.includes(attachId)) {
-            state.deletedAttachmentIds.push(attachId);
-          }
-
-          // posts 배열에서 해당 게시글의 첨부파일 제거
-          const postIndex = state.posts.findIndex((post) => post.id === postId);
-          if (postIndex !== -1 && state.posts[postIndex].attachments) {
-            const beforeCount = state.posts[postIndex].attachments!.length;
-            state.posts[postIndex] = {
-              ...state.posts[postIndex],
-              attachments: state.posts[postIndex].attachments!.filter(
-                (att) => att.id !== attachId
-              ),
-            };
-            const afterCount = state.posts[postIndex].attachments?.length || 0;
-            console.log(
-              "[bulletinSlice] rejected(not found) - posts 배열 업데이트:",
-              { beforeCount, afterCount }
-            );
-          }
-
-          // currentPost에서도 첨부파일 제거
-          if (state.currentPost && state.currentPost.id === postId) {
-            const beforeCount = state.currentPost.attachments?.length || 0;
-            state.currentPost = {
-              ...state.currentPost,
-              attachments:
-                state.currentPost.attachments?.filter(
-                  (att) => att.id !== attachId
-                ) || [],
-            };
-            const afterCount = state.currentPost.attachments?.length || 0;
-            console.log(
-              "[bulletinSlice] rejected(not found) - currentPost 업데이트:",
-              { beforeCount, afterCount }
-            );
-          }
-        } else {
-          console.log(
-            "[bulletinSlice] 서버 오류이지만 파일이 존재할 수 있음 - UI 상태 유지"
-          );
-          // 네트워크 오류, 권한 오류 등의 경우 UI 상태를 유지하여 사용자가 다시 시도할 수 있도록 함
-        }
+        state.error = action.payload as string;
       });
   },
 });
@@ -764,4 +446,4 @@ export const {
   addDeletedAttachmentId,
 } = bulletinSlice.actions;
 
-export default bulletinSlice.reducer; 
+export default bulletinSlice.reducer;

@@ -22,6 +22,39 @@ export const fetchAnnouncements = createAsyncThunk(
   }
 );
 
+// 공지사항 목록 조회 (페이징 지원)
+export const fetchAnnouncementsWithPaging = createAsyncThunk(
+  "announcements/fetchAnnouncementsWithPaging",
+  async (
+    {
+      teamId,
+      workspaceId,
+      page = 0,
+      size = 5,
+    }: {
+      teamId: number;
+      workspaceId: string;
+      page?: number;
+      size?: number;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const response = await announcementApi.getAnnouncementsWithPaging(
+        workspaceId,
+        teamId,
+        page,
+        size
+      );
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.message || "공지사항을 불러오는데 실패했습니다."
+      );
+    }
+  }
+);
+
 // 공지사항 생성
 export const createAnnouncement = createAsyncThunk(
   "announcements/createAnnouncement",
@@ -74,8 +107,8 @@ export const updateAnnouncement = createAsyncThunk(
         workspaceId,
         announcementId,
         {
-        title,
-        content,
+          title,
+          content,
         }
       );
       return response;
@@ -105,4 +138,4 @@ export const deleteAnnouncement = createAsyncThunk(
       return rejectWithValue(error.message || "공지사항 삭제에 실패했습니다.");
     }
   }
-); 
+);
