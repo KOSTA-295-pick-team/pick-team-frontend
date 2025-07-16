@@ -29,12 +29,8 @@ export const MyPage: React.FC = () => {
         <Card title="마이페이지">
           <div className="text-center mb-8">
             <img
-              key={`${currentUser.profileImageUrl || "default"}-${Date.now()}`}
-              src={getProfileImageSrc(
-                currentUser.profileImageUrl,
-                currentUser.id,
-                128
-              )}
+              key={`${currentUser.profileImageUrl || "default"}-${currentUser.id}`}
+              src={getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 128)}
               alt={currentUser.name || "User Profile"}
               className="w-32 h-32 rounded-full mx-auto mb-4 border-4 border-blue-500 object-cover"
               onError={(e) => handleImageError(e, currentUser.id, 128)}
@@ -103,6 +99,7 @@ export const ProfileEditPage: React.FC = () => {
     null
   );
   const [hasUploadedImage, setHasUploadedImage] = useState(false); // 업로드 상태 추적
+  const [imageKey, setImageKey] = useState(0); // 강제 리렌더링을 위한 키
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -167,16 +164,11 @@ export const ProfileEditPage: React.FC = () => {
 
     setIsUploadingImage(true);
     setImageError(null);
-    setHasUploadedImage(true); // 업로드 시작 시 플래그 설정
+    setHasUploadedImage(true);
 
     try {
       const response = await userApi.uploadProfileImage(profileImageFile);
       const imageUrl = response.data.profileImageUrl;
-
-      // 업로드된 이미지 URL로 즉시 미리보기 업데이트
-      const fullImageUrl = getProfileImageSrc(imageUrl, currentUser?.id || "", 150);
-      setProfileImagePreview(`${fullImageUrl}?t=${Date.now()}`);
-      setProfileImageFile(null);
 
       // AuthContext의 사용자 정보 업데이트
       updateUserProfile({
@@ -184,21 +176,20 @@ export const ProfileEditPage: React.FC = () => {
         profileImageUrl: imageUrl,
       });
 
+      // 새 이미지 URL로 미리보기 업데이트 (캐시 무효화 포함)
+      const newImageUrl = getProfileImageSrc(imageUrl, currentUser?.id || "", 150, true);
+      setProfileImagePreview(newImageUrl);
+      setProfileImageFile(null);
+      setImageKey(prev => prev + 1);
+
       // 최신 프로필 정보를 서버에서 다시 가져오기
       await refreshProfile();
       
-      // 추가적으로 미리보기를 다시 설정하여 확실히 갱신
-      setTimeout(() => {
-        const updatedImageUrl = getProfileImageSrc(imageUrl, currentUser?.id || "", 150);
-        setProfileImagePreview(`${updatedImageUrl}?t=${Date.now()}`);
-        setHasUploadedImage(false); // 업로드 완료 후 플래그 해제
-      }, 500);
-      
     } catch (error: any) {
       setImageError(error.message || "이미지 업로드 중 오류가 발생했습니다.");
-      setHasUploadedImage(false); // 에러 시에도 플래그 해제
     } finally {
       setIsUploadingImage(false);
+      setHasUploadedImage(false);
     }
   };
 
@@ -207,7 +198,7 @@ export const ProfileEditPage: React.FC = () => {
 
     setIsUploadingImage(true);
     setImageError(null);
-    setHasUploadedImage(true); // 삭제 시작 시 플래그 설정
+    setHasUploadedImage(true);
 
     try {
       // 프로필 이미지를 null로 설정하여 삭제
@@ -224,20 +215,16 @@ export const ProfileEditPage: React.FC = () => {
       setProfileImagePreview(
         getProfileImageSrc(null, currentUser?.id || "", 150)
       );
+      setImageKey(prev => prev + 1);
 
       // 최신 프로필 정보를 서버에서 다시 가져오기
       await refreshProfile();
       
-      // 삭제 완료 후 플래그 해제
-      setTimeout(() => {
-        setHasUploadedImage(false);
-      }, 500);
-      
     } catch (error: any) {
       setImageError(error.message || "이미지 삭제 중 오류가 발생했습니다.");
-      setHasUploadedImage(false); // 에러 시에도 플래그 해제
     } finally {
       setIsUploadingImage(false);
+      setHasUploadedImage(false);
     }
   };
 
@@ -328,6 +315,7 @@ export const ProfileEditPage: React.FC = () => {
             <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
               <div className="relative">
                 <img
+                  key={`profile-${imageKey}-${currentUser.id}`}
                   src={profileImagePreview || ""}
                   alt="Profile"
                   className="w-32 h-32 rounded-full border-4 border-blue-500 object-cover"
