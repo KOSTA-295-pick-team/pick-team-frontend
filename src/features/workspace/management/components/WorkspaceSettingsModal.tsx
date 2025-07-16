@@ -46,6 +46,9 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     const [blacklistLoading, setBlacklistLoading] = useState(false);
     const [blacklistError, setBlacklistError] = useState<string | null>(null);
     
+    // 초대코드 상태 추가
+    const [inviteCode, setInviteCode] = useState<string>('');
+    
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -53,6 +56,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
             setWorkspacePassword(''); // 보안상 비밀번호는 비워둠
             setWorkspaceName(currentWorkspace.name || '');
             setImagePreview(currentWorkspace.iconUrl || null);
+            setInviteCode(currentWorkspace.inviteCode || currentWorkspace.url || ''); // 초대코드 설정
             
             // 권한이 없는 사용자가 기본적으로 권한이 필요한 탭에 접근하지 못하도록 조정
             if (!canManageWorkspace && (activeTab === 'members' || activeTab === 'blacklist')) {
@@ -124,14 +128,19 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
 
     if (!currentWorkspace || !currentUser) return null;
 
-    const handleCopyLink = () => {
-        // 초대 코드가 아닌 워크스페이스 고유 URL로 초대하는 로직으로 변경
-        const inviteUrl = `${window.location.origin}/#/join-workspace/${currentWorkspace.id}`;
+    // 초대 코드 복사
+    const handleCopyInviteCode = () => {
+        if (!inviteCode) {
+            alert('초대 코드를 찾을 수 없습니다.');
+            return;
+        }
+        
+        const inviteUrl = `${window.location.origin}/#/ws/${inviteCode}`;
         navigator.clipboard.writeText(inviteUrl)
             .then(() => alert('✅ 초대 링크가 복사되었습니다!\n참여를 원하는 사람에게 공유해주세요.'))
             .catch(() => alert('복사에 실패했습니다.'));
     };
-    
+
     const handleSavePassword = async () => {
         if (!currentWorkspace) return;
         
@@ -280,7 +289,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
 
     const TABS_CONFIG = [
         { id: 'invite', label: '초대', icon: <LinkIcon className="w-4 h-4 mr-1" /> },
-        ...(canManageWorkspace ? [{ id: 'settings', label: '설정', icon: <PhotoIcon className="w-4 h-4 mr-1" /> }] : []),
+        ...(canManageWorkspace ? [{ id: 'settings', label: '서버 프로필', icon: <PhotoIcon className="w-4 h-4 mr-1" /> }] : []),
         ...(canManageWorkspace ? [{ id: 'members', label: '멤버 관리', icon: <UsersIcon className="w-4 h-4 mr-1" /> }] : []),
         ...(canManageWorkspace ? [{ id: 'blacklist', label: '차단 목록', icon: <NoSymbolIcon className="w-4 h-4 mr-1" /> }] : []),
         ...(isOwner ? [{ id: 'security', label: '보안', icon: <ShieldCheckIcon className="w-4 h-4 mr-1" /> }] : []),
@@ -322,12 +331,12 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
             }
         >
             <div className="mb-4 border-b border-neutral-200">
-                <nav className="-mb-px flex justify-center gap-x-1 overflow-x-auto" aria-label="Tabs">
+                <nav className="-mb-px flex gap-x-1 overflow-x-auto scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-neutral-100" aria-label="Tabs">
                     {TABS_CONFIG.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as 'security' | 'danger' | 'invite' | 'members' | 'blacklist')}
-                        className={`whitespace-nowrap py-2 px-3 border-b-2 font-medium text-xs flex items-center flex-shrink-0 min-w-0
+                        className={`whitespace-nowrap py-2 px-3 border-b-2 font-medium text-xs flex items-center flex-shrink-0
                         ${activeTab === tab.id
                             ? 'border-primary text-primary'
                             : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}
@@ -342,15 +351,37 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
 
             {activeTab === 'invite' && (
                 <div className="space-y-4">
-                    <p className="text-sm text-neutral-600">워크스페이스에 팀원을 초대하세요. 아래 초대 링크를 공유해주세요.</p>
-                    <Input 
-                        label="초대 링크"
-                        value={`${window.location.origin}/#/join-workspace/${currentWorkspace.id}`} 
-                        readOnly 
-                        Icon={LinkIcon}
-                    />
+                    <p className="text-sm text-neutral-600">
+                        워크스페이스의 영구 초대 링크입니다. 이 링크는 워크스페이스가 삭제되기 전까지 계속 사용할 수 있습니다.
+                    </p>
+
+                    {/* 초대 링크 표시 */}
+                    <div>
+                        <Input 
+                            label="초대 링크"
+                            value={inviteCode ? `${window.location.origin}/#/ws/${inviteCode}` : '초대 링크를 불러오는 중...'} 
+                            readOnly 
+                            Icon={LinkIcon}
+                        />
+                    </div>
+
                     <div className="flex space-x-2">
-                        <Button onClick={handleCopyLink} className="w-full" disabled={loading}>초대 링크 복사</Button>
+                        <Button 
+                            onClick={handleCopyInviteCode} 
+                            className="w-full" 
+                            disabled={loading || !inviteCode}
+                        >
+                            초대 링크 복사
+                        </Button>
+                    </div>
+                    
+                    <div className="text-xs text-neutral-500 bg-neutral-50 p-3 rounded-lg">
+                        <p className="font-medium mb-1">💡 참고사항:</p>
+                        <ul className="space-y-1">
+                            <li>• 이 초대 링크는 워크스페이스 생성 시 자동으로 생성됩니다</li>
+                            <li>• 링크는 영구적이며 변경되지 않습니다</li>
+                            <li>• 워크스페이스에 비밀번호가 설정된 경우 참여 시 비밀번호가 필요합니다</li>
+                        </ul>
                     </div>
                 </div>
             )}

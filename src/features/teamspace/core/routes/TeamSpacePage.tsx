@@ -98,7 +98,6 @@ export const TeamSpacePage: React.FC = () => {
     // 팀 설정 관련 상태
     const [showTeamSettingsDropdown, setShowTeamSettingsDropdown] = useState(false);
     const [showLeaveTeamModal, setShowLeaveTeamModal] = useState(false);
-    const [showDeleteTeamModal, setShowDeleteTeamModal] = useState(false);
     
     // 현재 사용자가 팀장인지 확인
     const isTeamLeader = team?.leader?.id === currentUser?.id;
@@ -215,13 +214,13 @@ export const TeamSpacePage: React.FC = () => {
                             <Card className="absolute top-full right-0 mt-2 w-48 z-20">
                                 <ul className="text-sm">
                                     <li>
-                                        <Button variant="ghost" className="w-full justify-start" leftIcon={<ArrowRightOnRectangleIcon />} onClick={() => setShowLeaveTeamModal(true)}>
+                                        <Button variant="ghost" className="w-full justify-start py-2 px-3 text-sm h-auto" leftIcon={<ArrowRightOnRectangleIcon />} onClick={() => setShowLeaveTeamModal(true)}>
                                             팀 탈퇴하기
                                         </Button>
                                     </li>
                                     {isTeamLeader && (
                                         <li>
-                                            <Button variant="ghost" className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleDeleteTeam}>
+                                            <Button variant="ghost" className="w-full justify-start py-2 px-3 text-sm h-auto text-red-600 hover:text-red-700 hover:bg-red-50" leftIcon={<ArrowRightOnRectangleIcon />} onClick={handleDeleteTeam}>
                                                 팀 삭제하기
                                             </Button>
                                         </li>

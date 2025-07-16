@@ -13,6 +13,12 @@ export const WorkspaceSidebar: React.FC = () => {
     const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
 
     const selectWorkspace = (ws: Workspace) => {
+        // 이미 현재 워크스페이스라면 아무것도 하지 않음
+        if (currentWorkspace?.id === ws.id) {
+            return;
+        }
+        
+        // 워크스페이스 ID로 설정하고 네비게이션
         setCurrentWorkspaceById(ws.id);
         navigate(`/ws/${ws.id}`);
     };

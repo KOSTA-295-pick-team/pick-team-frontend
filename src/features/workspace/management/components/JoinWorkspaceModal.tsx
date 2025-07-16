@@ -7,14 +7,22 @@ import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace'; // 
 interface JoinWorkspaceModalProps {
     isOpen: boolean;
     onClose: () => void;
+    initialInviteCode?: string;
 }
 
-const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose }) => {
-    const [inviteCode, setInviteCode] = useState('');
+const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose, initialInviteCode }) => {
+    const [inviteCode, setInviteCode] = useState(initialInviteCode || '');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const { joinWorkspace, joinWorkspaceById, loading, setCurrentWorkspaceById } = useWorkspace(); // useAuth -> useWorkspace
+    const { joinWorkspace, loading, setCurrentWorkspaceById } = useWorkspace();
     const navigate = useNavigate();
+
+    // initialInviteCode가 변경될 때 inviteCode 업데이트
+    React.useEffect(() => {
+        if (initialInviteCode) {
+            setInviteCode(initialInviteCode);
+        }
+    }, [initialInviteCode]);
 
     const handleCloseAndReset = () => {
         setInviteCode('');
@@ -26,10 +34,17 @@ const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose
     const extractWorkspaceId = (input: string): { type: 'url' | 'code', value: string } => {
         const trimmedInput = input.trim();
         
-        // URL에서 초대 코드 추출: #/abc123def 형태
-        const urlMatch = trimmedInput.match(/#\/([a-zA-Z0-9_-]+)$/);
+        // URL에서 초대 코드 추출: 다양한 URL 형태 지원
+        // 예: http://localhost:5173/#/ws/tFzUtAN9, https://example.com/#/ws/abc123, #/ws/def456, /ws/ghi789
+        const urlMatch = trimmedInput.match(/(?:https?:\/\/[^\/]+)?(?:\/#)?\/ws\/([a-zA-Z0-9]+)/);
         if (urlMatch) {
             return { type: 'code', value: urlMatch[1] };
+        }
+        
+        // 해시 프래그먼트만 있는 경우: #/ws/abc123
+        const hashMatch = trimmedInput.match(/#\/ws\/([a-zA-Z0-9]+)/);
+        if (hashMatch) {
+            return { type: 'code', value: hashMatch[1] };
         }
         
         // 숫자만 있는 경우 (워크스페이스 ID)
@@ -37,7 +52,12 @@ const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose
             return { type: 'url', value: trimmedInput };
         }
         
-        // 영문자+숫자 조합 (초대 코드)
+        // 영문자+숫자 조합 (초대 코드) - 백엔드에서 생성된 6~15자리 코드
+        if (/^[a-zA-Z0-9]{6,15}$/.test(trimmedInput)) {
+            return { type: 'code', value: trimmedInput };
+        }
+        
+        // 기본적으로 초대 코드로 처리
         return { type: 'code', value: trimmedInput };
     };
 
@@ -53,18 +73,20 @@ const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose
             const { type, value } = extractWorkspaceId(inviteCode);
             let workspace;
 
+            // 숫자인 경우 (워크스페이스 ID)는 보안상 허용하지 않음
             if (type === 'url') {
-                // 워크스페이스 ID로 직접 참여
-                workspace = await joinWorkspaceById(value, password.trim() || undefined);
-            } else {
-                // 기존 초대 코드로 참여
-                workspace = await joinWorkspace({
-                    inviteCode: value,
-                    password: password.trim() || undefined
-                });
+                setError('워크스페이스 ID로는 참여할 수 없습니다. 초대 코드를 사용해주세요.');
+                return;
             }
 
+            // 초대 코드로만 참여 가능
+            workspace = await joinWorkspace({
+                inviteCode: value,
+                password: password.trim() || undefined
+            });
+
             if (workspace) {
+                // 워크스페이스 ID로 설정하고 네비게이션
                 setCurrentWorkspaceById(workspace.id);
                 navigate(`/ws/${workspace.id}`);
                 handleCloseAndReset();
@@ -103,7 +125,7 @@ const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose
                 </p>
                 <Input
                     label="초대 링크 또는 코드"
-                    placeholder="예: http://localhost:5173/#/abc123def 또는 abc123def"
+                    placeholder="예: abc123def 또는 http://localhost:5173/#/ws/abc123def"
                     value={inviteCode}
                     onChange={(e) => setInviteCode(e.target.value)}
                     Icon={LinkIcon}
@@ -121,10 +143,12 @@ const JoinWorkspaceModal: React.FC<JoinWorkspaceModalProps> = ({ isOpen, onClose
                 <div className="text-xs text-neutral-500 bg-neutral-50 p-3 rounded-lg">
                     <p className="font-medium mb-1">지원하는 형식:</p>
                     <ul className="space-y-1">
-                        <li>• 초대 링크: http://localhost:5173/#/abc123def</li>
-                        <li>• 워크스페이스 ID: 1</li>
-                        <li>• 초대 코드: abc123def</li>
+                        <li>• 초대 코드: abc123def (8-12자리)</li>
+                        <li>• 초대 링크: http://localhost:5173/#/ws/abc123def</li>
                     </ul>
+                    <p className="text-red-600 text-xs mt-2">
+                        ⚠️ 보안상 워크스페이스 ID로는 참여할 수 없습니다.
+                    </p>
                 </div>
             </div>
         </Modal>

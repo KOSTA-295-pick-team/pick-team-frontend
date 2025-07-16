@@ -100,7 +100,6 @@ export const LoginPage: React.FC = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="test1@example.com"
             />
             <Input
               label="비밀번호"
@@ -110,7 +109,6 @@ export const LoginPage: React.FC = () => {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="password"
             />
             {error && <p className="text-sm text-red-500">{error}</p>}
             <Button 
@@ -123,10 +121,6 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
           <div className="mt-6">
-            <div className="text-sm text-center text-neutral-500 mb-4">
-              테스트 계정: test1@example.com / password<br/>
-              또는 test2@example.com / password
-            </div>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-neutral-300" />

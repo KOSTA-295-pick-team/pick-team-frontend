@@ -34,9 +34,6 @@ const Router: React.FC = () => {
                 <Route path="users/:userId" element={<UserProfileViewPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="empty-workspace" element={<EmptyWorkspacePage />} />
-
-                {/* 초대 코드로 접근 시 핸들러 */}
-                {/* <Route path="/invite/:inviteCode" element={<InviteCodeHandler />} /> */}
             </Route>
         </Routes>
     );
@@ -51,9 +48,26 @@ const NavigateToInitialView: React.FC = () => {
 
   if (workspaces.length > 0) {
     // 마지막으로 접근한 워크스페이스 ID를 localStorage에서 가져오거나 첫 번째 워크스페이스로 이동
-    const lastWorkspaceId = localStorage.getItem('lastAccessedWorkspaceId') || workspaces[0].id;
-    const targetWorkspace = workspaces.find(ws => String(ws.id) === lastWorkspaceId) || workspaces[0];
-    return <Navigate to={`/ws/${targetWorkspace.id}`} replace />;
+    const lastWorkspaceId = localStorage.getItem('lastAccessedWorkspaceId');
+    let targetWorkspace = workspaces[0];
+    
+    if (lastWorkspaceId) {
+      const foundWorkspace = workspaces.find(ws => 
+        ws.id === lastWorkspaceId || 
+        ws.inviteCode === lastWorkspaceId || 
+        ws.url === lastWorkspaceId
+      );
+      if (foundWorkspace) {
+        targetWorkspace = foundWorkspace;
+      }
+    }
+    
+    const inviteCode = targetWorkspace.inviteCode || targetWorkspace.url;
+    if (!inviteCode) {
+      console.error('워크스페이스에 초대 코드가 없습니다:', targetWorkspace);
+      return <Navigate to="/empty-workspace" replace />;
+    }
+    return <Navigate to={`/ws/${inviteCode}`} replace />;
   }
 
   return <Navigate to="/empty-workspace" replace />;

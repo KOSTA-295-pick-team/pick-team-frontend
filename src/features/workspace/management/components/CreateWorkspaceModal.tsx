@@ -41,6 +41,7 @@ const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({ isOpen, onC
             });
 
             if (workspace) {
+                // 워크스페이스 ID로 설정하고 네비게이션
                 setCurrentWorkspaceById(workspace.id);
                 navigate(`/ws/${workspace.id}`);
                 handleCloseAndReset();

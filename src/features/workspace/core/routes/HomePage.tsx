@@ -16,7 +16,7 @@ import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamPro
 
 export const HomePage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { currentWorkspace, setCurrentWorkspaceById, setCurrentTeamProject, workspaces } = useWorkspace();
+  const { currentWorkspace, setCurrentWorkspaceById, setCurrentTeamProject, workspaces, loadWorkspaces } = useWorkspace();
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
 
@@ -59,10 +59,12 @@ export const HomePage: React.FC = () => {
 
   // 워크스페이스 멤버 미리보기 로드 (4명)
   const loadMembersPreview = async () => {
-    if (!currentWorkspace || workspaceMembers.length > 0) return;
+    if (!currentWorkspace) return;
     
     try {
+      console.log('워크스페이스 멤버 로드 시작:', currentWorkspace.id, currentWorkspace.name);
       const members = await workspaceApi.getMembers(currentWorkspace.id);
+      console.log('로드된 멤버 목록:', members);
       setWorkspaceMembers(members);
     } catch (error: any) {
       console.error('워크스페이스 멤버 미리보기 로드 실패:', error);
@@ -107,18 +109,69 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     if (workspaceId && (!currentWorkspace || currentWorkspace.id !== workspaceId)) {
-      // 실제 workspaces 배열에서 찾기 (목업 데이터 대신)
-      const targetWs = workspaces.find((ws: Workspace) => ws.id === workspaceId);
+      // 실제 workspaces 배열에서 찾기 (ID 또는 초대 코드로)
+      const targetWs = workspaces.find((ws: Workspace) => 
+        ws.id === workspaceId || 
+        ws.inviteCode === workspaceId || 
+        ws.url === workspaceId
+      );
       if (targetWs) {
+        // 워크스페이스 ID로 통일하여 설정
         setCurrentWorkspaceById(targetWs.id);
-      } else {
-        // 워크스페이스를 찾지 못한 경우, 첫 번째 워크스페이스로 이동
-        if (workspaces.length > 0) {
-          navigate(`/ws/${workspaces[0].id}`);
-        } else {
-          // 워크스페이스가 없는 경우 홈으로 이동
-          navigate('/');
+        
+        // URL이 초대 코드인 경우 워크스페이스 ID로 리다이렉트 (일관성 유지)
+        if (workspaceId !== targetWs.id) {
+          navigate(`/ws/${targetWs.id}`, { replace: true });
         }
+      } else {
+        // 워크스페이스를 찾지 못한 경우, 초대 코드로 인식하여 자동 참여 시도
+        let isJoining = false; // 중복 호출 방지 플래그
+        
+        const handleAutoJoin = async () => {
+          if (isJoining) return; // 이미 처리 중이면 무시
+          isJoining = true;
+          
+          try {
+            // 숫자가 아닌 경우 초대 코드로 인식
+            if (!/^\d+$/.test(workspaceId)) {
+              console.log('초대 코드로 워크스페이스 참여 시도:', workspaceId);
+              
+              const workspace = await workspaceApi.join({
+                inviteCode: workspaceId,
+                password: undefined
+              });
+              
+              if (workspace) {
+                console.log('워크스페이스 참여 성공:', workspace);
+                // 워크스페이스 목록 다시 로드 후 워크스페이스 ID로 리다이렉트
+                await loadWorkspaces();
+                navigate(`/ws/${workspace.id}`, { replace: true });
+                return;
+              }
+            }
+            
+            // 일반적인 워크스페이스 ID인 경우 또는 참여 실패 시
+            if (workspaces.length > 0) {
+              const firstWorkspace = workspaces[0];
+              navigate(`/ws/${firstWorkspace.id}`);
+            } else {
+              navigate('/');
+            }
+          } catch (error) {
+            console.error('자동 참여 실패:', error);
+            // 참여 실패 시 기본 동작
+            if (workspaces.length > 0) {
+              const firstWorkspace = workspaces[0];
+              navigate(`/ws/${firstWorkspace.id}`);
+            } else {
+              navigate('/');
+            }
+          } finally {
+            isJoining = false;
+          }
+        };
+        
+        handleAutoJoin();
       }
     }
     // Clear selected team project when navigating to a workspace home
@@ -128,6 +181,10 @@ export const HomePage: React.FC = () => {
   // 워크스페이스 멤버 미리보기 로드
   useEffect(() => {
     if (currentWorkspace) {
+      // 워크스페이스 변경 시 멤버 목록 초기화
+      setWorkspaceMembers([]);
+      setMembersError(null);
+      
       loadMembersPreview();
       loadTeams();
     }

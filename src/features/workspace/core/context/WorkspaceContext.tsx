@@ -10,7 +10,7 @@ export interface WorkspaceContextType {
     loadWorkspaces: () => Promise<void>;
     createWorkspace: (data: { name: string; iconUrl?: string; password?: string }) => Promise<Workspace>;
     joinWorkspace: (data: { inviteCode: string; password?: string }) => Promise<Workspace>;
-    joinWorkspaceById: (workspaceId: string, password?: string) => Promise<Workspace>;
+    // joinWorkspaceById: 보안상 제거됨 - 초대 코드만 사용
     setCurrentWorkspaceById: (workspaceId: string | null) => void;
     setCurrentTeamProject: (teamProject: any | null) => void; // TeamProject -> any
     loading: boolean;
@@ -46,8 +46,11 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
         try {
             const data = await workspaceApi.getMyWorkspaces();
             setWorkspaces(data);
+            
+            // 현재 워크스페이스가 없고 워크스페이스가 있다면 첫 번째 워크스페이스를 설정
             if (data.length > 0 && !currentWorkspace) {
-                setCurrentWorkspace(data[0]);
+                const firstWorkspace = data[0];
+                setCurrentWorkspace(firstWorkspace);
             }
         } catch (err: any) {
             setError(err.message || '워크스페이스 목록을 불러오는데 실패했습니다.');
@@ -73,8 +76,9 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
     const joinWorkspace = async (data: { inviteCode: string; password?: string }) => {
         try {
             const joinedWorkspace = await workspaceApi.join(data);
+            // 이미 워크스페이스 목록에 있는지 확인
             if (!workspaces.some(ws => ws.id === joinedWorkspace.id)) {
-            setWorkspaces(prev => [...prev, joinedWorkspace]);
+                setWorkspaces(prev => [...prev, joinedWorkspace]);
             }
             setCurrentWorkspace(joinedWorkspace);
             return joinedWorkspace;
@@ -85,6 +89,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
         }
     };
 
+    // joinWorkspaceById: 보안상 제거됨 - 초대 코드만 사용
+    /*
     const joinWorkspaceById = async (workspaceId: string, password?: string) => {
         try {
             const joinedWorkspace = await workspaceApi.joinById(workspaceId, password);
@@ -99,6 +105,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
             throw err;
         }
     };
+    */
 
     const setCurrentWorkspaceById = (workspaceId: string | null) => {
         if (!workspaceId) {
@@ -106,8 +113,19 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
             setCurrentTeamProject(null); // 워크스페이스 변경 시 팀도 초기화
             return;
         }
-        const workspace = workspaces.find(ws => ws.id === workspaceId);
+        
+        // 우선 ID로 찾기, 없으면 초대 코드로 찾기 (하위 호환성)
+        const workspace = workspaces.find(ws => 
+            ws.id === workspaceId ||
+            ws.inviteCode === workspaceId || 
+            ws.url === workspaceId
+        );
+        
         if (workspace) {
+            // 이미 현재 워크스페이스라면 아무것도 하지 않음 (무한 반복 방지)
+            if (currentWorkspace?.id === workspace.id) {
+                return;
+            }
             setCurrentWorkspace(workspace);
             setCurrentTeamProject(null); // 워크스페이스 변경 시 팀도 초기화
         }
@@ -120,7 +138,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
         loadWorkspaces,
         createWorkspace,
         joinWorkspace,
-        joinWorkspaceById,
+        // joinWorkspaceById: 보안상 제거됨
         setCurrentWorkspaceById,
         setCurrentTeamProject,
         loading,

@@ -16,14 +16,22 @@ export const workspaceApi = {
 
     // 워크스페이스 참여
     join: async (data: { inviteCode: string; password?: string }): Promise<Workspace> => {
-        const response = await apiRequest<ApiResponse<Workspace>>('/workspaces/join', {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-        return response.data;
+        try {
+            console.log('워크스페이스 참여 요청:', data);
+            const response = await apiRequest<ApiResponse<Workspace>>('/workspaces/join', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+            console.log('워크스페이스 참여 응답:', response);
+            return response.data;
+        } catch (error) {
+            console.error('워크스페이스 참여 API 오류:', error);
+            throw error;
+        }
     },
 
-    // 워크스페이스 ID로 직접 참여
+    // 워크스페이스 ID로 직접 참여는 보안상 제거됨 - 초대 코드만 사용
+    /*
     joinById: async (workspaceId: string, password?: string): Promise<Workspace> => {
         const response = await apiRequest<ApiResponse<Workspace>>(`/workspaces/${workspaceId}/join`, {
             method: 'POST',
@@ -31,6 +39,7 @@ export const workspaceApi = {
         });
         return response.data;
     },
+    */
 
     // 내 워크스페이스 목록 조회
     getMyWorkspaces: async (): Promise<Workspace[]> => {
