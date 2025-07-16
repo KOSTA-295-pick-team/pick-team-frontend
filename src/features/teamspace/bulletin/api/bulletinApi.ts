@@ -240,11 +240,10 @@ export const bulletinApi = {
       document.body.removeChild(a);
     } catch (error) {
       console.error("파일 다운로드 실패:", error);
-      alert("파일 다운로드에 실패했습니다.");
+      throw new Error("파일 다운로드에 실패했습니다.");
     }
   },
 
-  // 이미지 파일을 위한 Blob URL 생성 (인증 헤더 포함)
   getImageBlobUrl: async (fileId: number): Promise<string> => {
     try {
       const token = tokenManager.getAccessToken();

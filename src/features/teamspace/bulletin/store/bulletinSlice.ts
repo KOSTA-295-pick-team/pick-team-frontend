@@ -20,7 +20,7 @@ const mapPostResponseToBulletinPost = (post: PostResponse): BulletinPost => ({
   createdAt: post.createdAt,
   updatedAt: post.updatedAt,
   attachments: post.attachments.map((att) => ({
-    id: String(att.id),
+    id: att.id, // String 변환 제거 - number 타입 유지
     postId: post.id,
     fileName: att.originalFileName,
     fileUrl: att.downloadUrl,
@@ -62,7 +62,7 @@ interface BulletinState {
   lastFetchPostsTime: number;
   lastResetTime: number;
   // 삭제된 첨부파일 ID 추적 (세션 간 유지)
-  deletedAttachmentIds: string[];
+  deletedAttachmentIds: number[];
 }
 
 const initialState: BulletinState = {
@@ -89,7 +89,7 @@ const initialState: BulletinState = {
 // 첨부파일 필터링 헬퍼 함수 - 삭제된 첨부파일을 제외한 첨부파일만 반환
 const filterAttachments = (
   attachments: BulletinAttachment[],
-  deletedIds: string[]
+  deletedIds: number[]
 ): BulletinAttachment[] => {
   return attachments.filter(
     (attachment) => !deletedIds.includes(attachment.id)
@@ -99,7 +99,7 @@ const filterAttachments = (
 // 게시글에서 삭제된 첨부파일을 제거하는 헬퍼 함수
 const removeDeletedAttachmentsFromPost = (
   post: BulletinPost,
-  deletedIds: string[]
+  deletedIds: number[]
 ): BulletinPost => {
   return {
     ...post,
@@ -208,7 +208,7 @@ const bulletinSlice = createSlice({
     },
 
     // 삭제된 첨부파일 ID를 추가하는 액션 (세션 간 유지)
-    addDeletedAttachmentId: (state, action: PayloadAction<string>) => {
+    addDeletedAttachmentId: (state, action: PayloadAction<number>) => {
       const attachId = action.payload;
       if (!state.deletedAttachmentIds.includes(attachId)) {
         state.deletedAttachmentIds.push(attachId);
