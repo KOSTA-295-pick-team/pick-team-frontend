@@ -1,5 +1,3 @@
-
-
 export interface KanbanAttachment {
   id: string;
   cardId: string;
@@ -28,7 +26,9 @@ export interface KanbanCard {
   content?: string;
   description?: string;
   deadline?: string;
-  dueDate?: string;
+  isApproved?: boolean;
+  completionRequested?: boolean;
+  completionRequestMessage?: string;
   assignees: {
     id: string;
     userId: string;
@@ -51,11 +51,12 @@ export interface KanbanBoard {
 }
 
 export interface KanbanTaskUpdateRequest {
-    title?: string;
-    content?: string; // description 대신 content 사용
-    deadline?: string; 
-    kanbanListId?: string;
-    order?: number;
-    isApproved?: boolean;
-    assigneeIds?: string[]; // string[]로 변경
-} 
+  title?: string;
+  content?: string;
+  dueDate?: string;
+  deadline?: string;
+  kanbanListId?: string;
+  order?: number;
+  isApproved?: boolean;
+  assigneeIds?: string[];
+}
