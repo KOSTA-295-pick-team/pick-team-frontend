@@ -21,7 +21,7 @@ export const GlobalHeader: React.FC = () => {
     return (
         <header className="bg-primary text-white shadow-md h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 fixed top-0 left-0 right-0 z-50">
             <Link
-                to={`/ws/${currentWorkspace?.id || "ws_default"}`}
+                to={currentWorkspace ? `/ws/${currentWorkspace.id}` : "/"}
                 className="text-xl font-bold"
             >
                 PickTeam
@@ -39,12 +39,16 @@ export const GlobalHeader: React.FC = () => {
                         className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-primary-dark focus:ring-white"
                     >
                         <img
-                            className="h-8 w-8 rounded-full object-cover"
+                            className="h-8 w-8 rounded-full object-cover border-2 border-white"
                             src={
                                 currentUser.profileImageUrl ||
                                 `https://picsum.photos/seed/${currentUser.id}/32/32`
                             }
                             alt="User Profile"
+                            onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=6366f1&color=fff&size=32`;
+                            }}
                         />
                     </button>
                     {profileDropdownOpen && (

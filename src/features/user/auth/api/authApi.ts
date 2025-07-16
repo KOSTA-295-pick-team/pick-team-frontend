@@ -1,44 +1,32 @@
 import { apiRequest, tokenManager } from '@/lib/apiClient';
+import { userApi, UserApiError } from '@/lib/userApi';
 import { LoginRequest, LoginResponse } from '@/features/user/types/user';
 
-// 백엔드의 ApiResponse 래퍼 타입
-interface ApiResponse<T> {
-  success: boolean;
-  message: string;
-  errorCode: string | null;
-  data: T;
-}
-
 export const authApi = {
-  // 로그인
+  // 로그인 - userApi를 사용하여 통합된 로그인 로직 사용
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const response = await apiRequest<ApiResponse<LoginResponse>>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    });
-
-    // response.data 에서 실제 LoginResponse 객체를 추출
-    if (response && response.success && response.data && response.data.token) {
-      const loginData = response.data;
-      tokenManager.setAccessToken(loginData.token); // token 필드 사용
-      if (loginData.refreshToken) {
-        tokenManager.setRefreshToken(loginData.refreshToken);
+    try {
+      const response = await userApi.login(credentials);
+      
+      if (response && response.success && response.data) {
+        return response.data;
       }
-      return loginData;
+      throw new Error('로그인에 실패했습니다.');
+    } catch (error) {
+      if (error instanceof UserApiError) {
+        throw new Error(error.message);
+      }
+      throw error;
     }
-    throw new Error('로그인에 실패했습니다.');
   },
 
-  // 로그아웃
+  // 로그아웃 - userApi를 사용하여 통합된 로그아웃 로직 사용
   logout: async (): Promise<void> => {
     try {
-      await apiRequest('/auth/logout', { method: 'POST' });
+      await userApi.logout();
     } catch (error) {
-      // 백엔드 로그아웃 실패해도 로컬 정리는 진행
-      console.warn('Backend logout failed, but clearing local tokens:', error);
-    } finally {
-      // 백엔드 성공/실패 관계없이 로컬 토큰은 항상 정리
-      tokenManager.clearTokens();
+      // 로그아웃 에러는 로그만 남기고 진행 (토큰은 이미 정리됨)
+      console.warn('Backend logout failed, but local tokens cleared:', error);
     }
   },
 
@@ -48,17 +36,37 @@ export const authApi = {
     if (!refreshToken) throw new Error('No refresh token available.');
 
     const response = await apiRequest<{ token: string; refreshToken: string }>('/auth/refresh', {
-        method: 'POST',
-        body: JSON.stringify({ refreshToken }),
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
     });
 
-    if (response && response.token) {
-        tokenManager.setAccessToken(response.token);
-        if (response.refreshToken) {
-            tokenManager.setRefreshToken(response.refreshToken);
-        }
-    } else {
-        throw new Error('토큰 갱신에 실패했습니다.');
+    tokenManager.setAccessToken(response.token);
+    tokenManager.setRefreshToken(response.refreshToken);
+  },
+
+  // 세션 상태 확인
+  getSessionStatus: async () => {
+    try {
+      const response = await userApi.getSessionStatus();
+      return response.data;
+    } catch (error) {
+      if (error instanceof UserApiError) {
+        throw new Error(error.message);
+      }
+      throw error;
     }
-  }
+  },
+
+  // 내 프로필 조회
+  getMyProfile: async () => {
+    try {
+      const response = await userApi.getMyProfile();
+      return response.data;
+    } catch (error) {
+      if (error instanceof UserApiError) {
+        throw new Error(error.message);
+      }
+      throw error;
+    }
+  },
 }; 

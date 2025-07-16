@@ -49,6 +49,8 @@ const EmptyWorkspacePage: React.FC = () => {
 
             if (workspace) {
                 workspaceContext.setCurrentWorkspaceById(String(workspace.id));
+                // 워크스페이스가 새로 생성되었으므로 리다이렉트 플래그 초기화
+                sessionStorage.removeItem('hasRedirectedFromRoot');
                 navigate(`/ws/${workspace.id}`);
                 setCreateModalOpen(false);
                 setCreateForm({ name: '', iconUrl: '', password: '' });
@@ -133,7 +135,7 @@ const EmptyWorkspacePage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-primary-light to-primary flex items-center justify-center p-4">
+        <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-primary-light to-primary flex items-center justify-center p-4">
             <div className="max-w-4xl w-full">
                 {/* 메인 컨텐츠 */}
                 <div className="text-center mb-12">
