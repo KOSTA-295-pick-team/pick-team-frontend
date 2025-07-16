@@ -1,7 +1,7 @@
 // API 서비스 - 백엔드와의 통신을 담당하는 스크립트
 // 순환 참조 방지를 위해 authApi를 분리
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8081/api';
 
 // JWT 토큰 관리
 const TOKEN_KEY = 'auth_token';
@@ -23,14 +23,31 @@ function decodeJWT(token: string): any {
 }
 
 export const tokenManager = {
-  getAccessToken: () => localStorage.getItem(TOKEN_KEY),
-  setAccessToken: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  getRefreshToken: () => localStorage.getItem(REFRESH_TOKEN_KEY),
-  setRefreshToken: (token: string) => localStorage.setItem(REFRESH_TOKEN_KEY, token),
+  getAccessToken: () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    return token;
+  },
+  setAccessToken: (token: string) => {
+    if (!token || token === "undefined" || token === "null") {
+      return;
+    }
+    localStorage.setItem(TOKEN_KEY, token);
+  },
+  getRefreshToken: () => {
+    const token = localStorage.getItem(REFRESH_TOKEN_KEY);
+    return token;
+  },
+  setRefreshToken: (token: string) => {
+    if (!token || token === "undefined" || token === "null") {
+      return;
+    }
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  },
   clearTokens: () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
   },
+  
   // JWT 토큰에서 사용자 ID 추출
   getUserId: () => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -38,7 +55,44 @@ export const tokenManager = {
     
     const decoded = decodeJWT(token);
     return decoded?.sub || null; // 'sub' 필드가 사용자 ID
-  }
+  },
+
+  // 디버깅용 헬퍼 함수들
+  debug: {
+    getAllTokens: () => ({
+      accessToken: localStorage.getItem(TOKEN_KEY),
+      refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
+    }),
+    isTokenExpired: (token: string): boolean => {
+      try {
+        const tokenParts = token.split(".");
+        if (tokenParts.length !== 3) return true;
+
+        const payload = JSON.parse(atob(tokenParts[1]));
+        const now = Math.floor(Date.now() / 1000);
+        return payload.exp < now;
+      } catch {
+        return true;
+      }
+    },
+    getTokenInfo: (token: string) => {
+      try {
+        const tokenParts = token.split(".");
+        if (tokenParts.length !== 3) return null;
+
+        const payload = JSON.parse(atob(tokenParts[1]));
+        return {
+          userId: payload.sub,
+          email: payload.email,
+          exp: new Date(payload.exp * 1000),
+          iat: new Date(payload.iat * 1000),
+          isExpired: payload.exp < Math.floor(Date.now() / 1000),
+        };
+      } catch {
+        return null;
+      }
+    },
+  },
 };
 
 // API 에러 처리 함수

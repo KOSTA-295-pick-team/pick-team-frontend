@@ -10,14 +10,15 @@ export const AppLayout: React.FC = () => {
   const isTeamSpacePage = location.pathname.includes('/team/');
   const isWorkspaceHomePage = location.pathname.match(/^\/ws\/[^\/]+$/);
   const isChatPage = location.pathname.includes('/chat/');
+  const isEmptyWorkspacePage = location.pathname === '/empty-workspace';
   const hasTeamSidebar = isTeamSpacePage || isWorkspaceHomePage || isChatPage;
   
   return (
     <div className="flex flex-col min-h-screen bg-neutral-50">
       <GlobalHeader />
       <div className="flex flex-1 pt-16">
-        <WorkspaceSidebar />
-        <main className={`flex-1 ml-16 ${hasTeamSidebar ? 'p-0' : 'p-4 sm:p-6 lg:p-8'}`}>
+        {!isEmptyWorkspacePage && <WorkspaceSidebar />}
+        <main className={`flex-1 ${!isEmptyWorkspacePage ? 'ml-16' : ''} ${hasTeamSidebar || isEmptyWorkspacePage ? 'p-0' : 'p-4 sm:p-6 lg:p-8'}`}>
           <Outlet />
         </main>
       </div>

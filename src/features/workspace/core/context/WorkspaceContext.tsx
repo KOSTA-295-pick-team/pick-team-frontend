@@ -27,34 +27,51 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
     const [currentTeamProject, setCurrentTeamProject] = useState<TeamProject | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const { isAuthenticated } = useAuth();
+    const [hasLoaded, setHasLoaded] = useState(false);
+    const { currentUser, isAuthenticated } = useAuth();
 
     useEffect(() => {
-        if (isAuthenticated) {
+        console.log('WorkspaceContext - currentUser:', currentUser, 'isAuthenticated:', isAuthenticated, 'hasLoaded:', hasLoaded);
+        
+        if (currentUser && isAuthenticated && !hasLoaded) {
+            console.log('워크스페이스 로드 시작');
             loadWorkspaces();
-        } else {
+        } else if (!currentUser || !isAuthenticated) {
+            console.log('인증되지 않음, 워크스페이스 초기화');
             setWorkspaces([]);
             setCurrentWorkspace(null);
             setCurrentTeamProject(null);
             setLoading(false);
+            setHasLoaded(false);
         }
-    }, [isAuthenticated]);
+    }, [currentUser, isAuthenticated, hasLoaded]); // hasLoaded 의존성 다시 추가
 
     const loadWorkspaces = async () => {
+        if (hasLoaded) {
+            console.log('이미 워크스페이스가 로드됨, 중복 호출 방지');
+            return;
+        }
+        
         setLoading(true);
         setError(null);
         try {
+            console.log('워크스페이스 API 호출 시작');
             const data = await workspaceApi.getMyWorkspaces();
+            console.log('워크스페이스 데이터 수신:', data);
             setWorkspaces(data);
             
             // 현재 워크스페이스가 없고 워크스페이스가 있다면 첫 번째 워크스페이스를 설정
             if (data.length > 0 && !currentWorkspace) {
-                const firstWorkspace = data[0];
-                setCurrentWorkspace(firstWorkspace);
+                console.log('첫 번째 워크스페이스로 설정:', data[0]);
+                setCurrentWorkspace(data[0]);
+            } else if (data.length === 0) {
+                console.log('워크스페이스가 없음');
             }
+            setHasLoaded(true);
         } catch (err: any) {
+            console.error('워크스페이스 로드 실패:', err);
             setError(err.message || '워크스페이스 목록을 불러오는데 실패했습니다.');
-            console.error(err);
+            setHasLoaded(true); // 실패해도 재시도 방지
         } finally {
             setLoading(false);
         }
