@@ -4,6 +4,7 @@ export interface User {
   name: string;
   nickname?: string; // 새로 추가
   role?: string; // optional로 변경
+  provider?: string; // OAuth 제공자 정보 (LOCAL, GOOGLE, KAKAO)
   
   // 프로필 정보
   bio?: string; // 자기소개

@@ -26,15 +26,19 @@ export interface LoginResponse {
     id: string;
     email: string;
     name: string;
-    nickname?: string;
+    age?: number;
     role?: string;
-    bio?: string;
-    skills?: string[];
-    interests?: string[];
+    provider?: string; // OAuth 제공자 정보 추가
+    mbti?: string;
+    disposition?: string;
+    introduction?: string;
+    portfolio?: string;
     profileImageUrl?: string;
-    githubUrl?: string;
-    linkedinUrl?: string;
-    portfolioUrl?: string;
+    preferWorkstyle?: string;
+    dislikeWorkstyle?: string;
+    hashtags?: string[];
+    createdAt?: string; // 계정 생성일 추가
+    updatedAt?: string; // 계정 수정일 추가
   };
 }
 
@@ -48,13 +52,15 @@ export interface RegisterUserRequest {
 
 export interface UpdateMyProfileRequest {
   name?: string;
-  nickname?: string;
-  bio?: string;
-  skills?: string[];
-  interests?: string[];
-  githubUrl?: string;
-  linkedinUrl?: string;
-  portfolioUrl?: string;
+  age?: number;
+  mbti?: string;
+  disposition?: string;
+  introduction?: string;
+  portfolio?: string;
+  profileImageUrl?: string | null;
+  preferWorkstyle?: string;
+  dislikeWorkstyle?: string;
+  hashtags?: string[];
 }
 
 export interface ChangePasswordRequest {
@@ -311,14 +317,14 @@ export const userApi = {
 
   // 내 프로필 조회
   getMyProfile: async (): Promise<ApiResponse<LoginResponse["user"]>> => {
-    return userApiRequest("/users/my-profile", {
+    return userApiRequest("/users/me", {
       method: "GET",
     });
   },
 
   // 내 프로필 업데이트
   updateMyProfile: async (profileData: UpdateMyProfileRequest): Promise<ApiResponse<LoginResponse["user"]>> => {
-    return userApiRequest("/users/my-profile", {
+    return userApiRequest("/users/me", {
       method: "PUT",
       body: JSON.stringify(profileData),
     });
@@ -327,9 +333,9 @@ export const userApi = {
   // 프로필 이미지 업로드
   uploadProfileImage: async (file: File): Promise<ApiResponse<{ profileImageUrl: string }>> => {
     const formData = new FormData();
-    formData.append("profileImage", file);
+    formData.append("file", file);
 
-    return userApiRequest("/users/my-profile/image", {
+    return userApiRequest("/users/me/profile-image", {
       method: "POST",
       body: formData,
     });
@@ -337,7 +343,7 @@ export const userApi = {
 
   // 비밀번호 변경
   changePassword: async (passwordData: ChangePasswordRequest): Promise<ApiResponse<{ message: string }>> => {
-    return userApiRequest("/users/change-password", {
+    return userApiRequest("/users/password", {
       method: "PUT",
       body: JSON.stringify(passwordData),
     });
