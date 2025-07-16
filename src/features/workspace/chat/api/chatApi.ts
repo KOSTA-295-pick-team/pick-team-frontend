@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
+import { chatLogger } from '../utils/chatLogger';
 
 export interface ChatRoomCreateRequest {
   name?: string;
@@ -101,22 +102,18 @@ export const chatApi = {
 
   // 채팅방 메시지 조회
   getChatMessages: async (workspaceId: number, chatRoomId: number, page = 0, size = 20): Promise<ChatMessageListResponse> => {
-    console.log('[ChatAPI] getChatMessages 호출 시작:', { workspaceId, chatRoomId, page, size });
-    
     const params = new URLSearchParams({
       page: page.toString(),
       size: size.toString(),
       sort: 'createdAt,asc'
     });
     const url = `/workspaces/${workspaceId}/chat-rooms/${chatRoomId}/messages?${params}`;
-    console.log('[ChatAPI] 요청 URL:', url);
     
     try {
       const response = await apiRequest<ChatMessageListResponse>(url);
-      console.log('[ChatAPI] getChatMessages 성공 응답:', response);
       return response;
     } catch (error) {
-      console.error('[ChatAPI] getChatMessages 실패:', error);
+      chatLogger.api.error('getChatMessages 실패', { workspaceId, chatRoomId, page, size, error });
       throw error;
     }
   },
