@@ -60,7 +60,7 @@ jobs:
           # 빌드 모드 설정
           if [ "${GITHUB_REF_NAME}" == "main" ]; then
             export BUILD_MODE=production
-            echo "main 브랜치 -> production 빌드 모드 설정" (추후 배포 브랜치 정책에 따라 변경 예정)
+            echo "main 브랜치 -> production 빌드 모드 설정 (추후 배포 브랜치 정책에 따라 변경 예정)"
           elif [ "${GITHUB_REF_NAME}" == "production" ]; then
             export BUILD_MODE=production
             echo "production 브랜치 -> production 빌드 모드 설정"
