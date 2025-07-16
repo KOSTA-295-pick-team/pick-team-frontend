@@ -40,8 +40,9 @@ export const GlobalHeader: React.FC = () => {
                         className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-primary-dark focus:ring-white"
                     >
                         <img
+                            key={`${currentUser.profileImageUrl || "default"}-${Date.now()}-${Math.random()}`}
                             className="h-8 w-8 rounded-full object-cover border-2 border-white"
-                            src={getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 32)}
+                            src={`${getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 32)}?v=${Date.now()}&r=${Math.random().toString(36).substring(2, 15)}`}
                             alt="User Profile"
                             onError={(e) => handleImageError(e, currentUser.id, 32)}
                         />
