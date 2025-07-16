@@ -12,68 +12,123 @@ import Linkify from 'react-linkify';
 const MessageItem = memo<{
   msg: any;
   currentUserId: number;
-}>(({ msg, currentUserId }) => (
-  <div className={`flex ${msg.userId === parseInt(currentUserId.toString()) ? 'justify-end' : 'justify-start'}`}>
-    <div className={`max-w-[70%] p-2.5 rounded-lg shadow ${msg.userId === parseInt(currentUserId.toString()) ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-800'}`}>
-      {msg.attachment && (
-        <div className="mb-1 p-2 border border-neutral-300 rounded bg-white/50">
-          {msg.attachment.type === 'image' ? (
-            <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
-          ) : (
-            <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
-              <PlusCircleIcon className="w-4 h-4 mr-1"/> {msg.attachment.fileName}
-            </a>
-          )}
-        </div>
-      )}
-      {msg.text && (
-        <p className="text-sm whitespace-pre-line">
-          <Linkify componentDecorator={(decoratedHref: string, decoratedText: string, key: number) => (
-            <a target="_blank" rel="noopener noreferrer" href={decoratedHref} key={key} className="text-blue-300 hover:underline">
-              {decoratedText}
-            </a>
-          )}>
-            {msg.text}
-          </Linkify>
+  currentWorkspace: any;
+  onDeleteMessage: (messageId: number) => void;
+}>(({ msg, currentUserId, currentWorkspace, onDeleteMessage }) => {
+  const [isHovering, setIsHovering] = useState(false);
+
+  // 삭제 권한 확인: 메시지 작성자 또는 워크스페이스 관리자
+  const canDeleteMessage = () => {
+    // 메시지 작성자인지 확인
+    if (msg.userId === parseInt(currentUserId.toString())) {
+      return true;
+    }
+
+    // 워크스페이스 관리자인지 확인
+    if (currentWorkspace) {
+      // 워크스페이스 소유자인지 확인
+      if (currentWorkspace.owner && currentWorkspace.owner.id === currentUserId) {
+        return true;
+      }
+
+      // 멤버 목록에서 현재 사용자의 역할 확인
+      if (currentWorkspace.members) {
+        const currentMember = currentWorkspace.members.find((member: any) => 
+          member.id === currentUserId
+        );
+        if (currentMember && currentMember.role === 'ADMIN') {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const handleDeleteClick = () => {
+    if (window.confirm('이 메시지를 삭제하시겠습니까?')) {
+      onDeleteMessage(msg.id);
+    }
+  };
+
+  return (
+    <div 
+      className={`flex ${msg.userId === parseInt(currentUserId.toString()) ? 'justify-end' : 'justify-start'}`}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      <div className={`max-w-[70%] p-2.5 rounded-lg shadow relative ${msg.userId === parseInt(currentUserId.toString()) ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-800'}`}>
+        {/* 삭제 버튼 */}
+        {isHovering && canDeleteMessage() && (
+          <button
+            onClick={handleDeleteClick}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-colors z-10"
+            title="메시지 삭제"
+          >
+            ×
+          </button>
+        )}
+        
+        {msg.attachment && (
+          <div className="mb-1 p-2 border border-neutral-300 rounded bg-white/50">
+            {msg.attachment.type === 'image' ? (
+              <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
+            ) : (
+              <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
+                <PlusCircleIcon className="w-4 h-4 mr-1"/> {msg.attachment.fileName}
+              </a>
+            )}
+          </div>
+        )}
+        {msg.text && (
+          <p className="text-sm whitespace-pre-line">
+            <Linkify componentDecorator={(decoratedHref: string, decoratedText: string, key: number) => (
+              <a target="_blank" rel="noopener noreferrer" href={decoratedHref} key={key} className="text-blue-300 hover:underline">
+                {decoratedText}
+              </a>
+            )}>
+              {msg.text}
+            </Linkify>
+          </p>
+        )}
+        <p className={`text-xs mt-1 ${msg.userId === parseInt(currentUserId.toString()) ? 'text-blue-200 text-right' : 'text-neutral-500'}`}>
+          {msg.userName || msg.senderName}, {(() => {
+            // timestamp 처리를 더 안전하게 개선
+            let messageDate: Date;
+            
+            // 1. timestamp가 이미 Date 객체인 경우
+            if (msg.timestamp instanceof Date && !isNaN(msg.timestamp.getTime())) {
+              messageDate = msg.timestamp;
+            }
+            // 2. createdAt 문자열을 사용
+            else if (msg.createdAt) {
+              messageDate = new Date(msg.createdAt);
+            }
+            // 3. 모든 방법이 실패한 경우
+            else {
+              console.warn(`⚠️ 메시지 ${msg.id} 타임스탬프 정보 없음:`, { timestamp: msg.timestamp, createdAt: msg.createdAt });
+              return '시간 정보 없음';
+            }
+            
+            // 유효한 Date 객체인지 검증
+            if (isNaN(messageDate.getTime())) {
+              console.warn(`⚠️ 메시지 ${msg.id} 잘못된 타임스탬프:`, { timestamp: msg.timestamp, createdAt: msg.createdAt, messageDate });
+              return '시간 정보 없음';
+            }
+            
+            return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          })()}
         </p>
-      )}
-      <p className={`text-xs mt-1 ${msg.userId === parseInt(currentUserId.toString()) ? 'text-blue-200 text-right' : 'text-neutral-500'}`}>
-        {msg.userName || msg.senderName}, {(() => {
-          // timestamp 처리를 더 안전하게 개선
-          let messageDate: Date;
-          
-          // 1. timestamp가 이미 Date 객체인 경우
-          if (msg.timestamp instanceof Date && !isNaN(msg.timestamp.getTime())) {
-            messageDate = msg.timestamp;
-          }
-          // 2. createdAt 문자열을 사용
-          else if (msg.createdAt) {
-            messageDate = new Date(msg.createdAt);
-          }
-          // 3. 모든 방법이 실패한 경우
-          else {
-            console.warn(`⚠️ 메시지 ${msg.id} 타임스탬프 정보 없음:`, { timestamp: msg.timestamp, createdAt: msg.createdAt });
-            return '시간 정보 없음';
-          }
-          
-          // 유효한 Date 객체인지 검증
-          if (isNaN(messageDate.getTime())) {
-            console.warn(`⚠️ 메시지 ${msg.id} 잘못된 타임스탬프:`, { timestamp: msg.timestamp, createdAt: msg.createdAt, messageDate });
-            return '시간 정보 없음';
-          }
-          
-          return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        })()}
-      </p>
+      </div>
     </div>
-  </div>
-));
+  );
+});
 
 export const ChatPage: React.FC = () => {
   const { workspaceId, chatId } = useParams<{ workspaceId: string, chatId: string }>();
   const { currentUser } = useAuth();
   const { currentWorkspace } = useWorkspace();
-  const { state, loadMessages, sendMessage, setCurrentChatRoomById } = useChat();
+  const { state, loadMessages, sendMessage, deleteMessage, setCurrentChatRoomById } = useChat();
   const navigate = useNavigate();
 
   const [newMessage, setNewMessage] = useState('');
@@ -194,6 +249,18 @@ export const ChatPage: React.FC = () => {
       }
     }
   }, [newMessage, currentUser, currentRoomId, sendMessage]);
+  
+  // 메시지 삭제 핸들러
+  const handleDeleteMessage = useCallback(async (messageId: number) => {
+    if (!currentRoomId) return;
+    
+    try {
+      await deleteMessage(currentRoomId, messageId);
+    } catch (error) {
+      console.error('메시지 삭제 실패:', error);
+      alert('메시지 삭제에 실패했습니다. 다시 시도해주세요.');
+    }
+  }, [currentRoomId, deleteMessage]);
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -323,7 +390,13 @@ export const ChatPage: React.FC = () => {
             
             {displayMessages.length > 0 ? (
               displayMessages.map(msg => (
-                <MessageItem key={msg.id} msg={msg} currentUserId={currentUser.id} />
+                <MessageItem 
+                  key={msg.id} 
+                  msg={msg} 
+                  currentUserId={currentUser.id} 
+                  currentWorkspace={currentWorkspace}
+                  onDeleteMessage={handleDeleteMessage}
+                />
               ))
             ) : (
               <div className="text-center text-neutral-500 py-8">

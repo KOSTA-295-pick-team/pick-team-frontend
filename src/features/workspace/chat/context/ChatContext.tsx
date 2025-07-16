@@ -46,6 +46,7 @@ type ChatAction =
   | { type: 'SET_CURRENT_CHAT_ROOM'; payload: ChatRoom | null }
   | { type: 'SET_MESSAGES'; payload: { chatRoomId: number; messages: ChatMessage[] } }
   | { type: 'ADD_MESSAGE'; payload: { chatRoomId: number; message: ChatMessage } }
+  | { type: 'DELETE_MESSAGE'; payload: { chatRoomId: number; messageId: number } }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_CONNECTED'; payload: boolean }
@@ -58,6 +59,7 @@ interface ChatContextType {
   setCurrentChatRoomById: (roomId: number) => Promise<void>;
   loadMessages: (chatRoomId: number) => Promise<void>;
   sendMessage: (chatRoomId: number, content: string) => Promise<void>;
+  deleteMessage: (chatRoomId: number, messageId: number) => Promise<void>;
   createChatRoom: (name: string, memberIds: number[], type: 'PERSONAL' | 'GROUP') => Promise<ChatRoom>;
   createDmChatRoom: (targetUserId: number) => Promise<ChatRoom>;
 }
@@ -171,6 +173,17 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: {
           ...state.messages,
           [action.payload.chatRoomId]: updatedMessages,
+        },
+      };
+    case 'DELETE_MESSAGE':
+      const chatRoomMessages = state.messages[action.payload.chatRoomId] || [];
+      const filteredMessages = chatRoomMessages.filter(msg => msg.id !== action.payload.messageId);
+      
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          [action.payload.chatRoomId]: filteredMessages,
         },
       };
     case 'SET_LOADING':
@@ -410,8 +423,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // 메시지 삭제 이벤트 리스너
         sseService.addEventListener('CHAT_MESSAGE_DELETED', (data) => {
-          console.log('메시지 삭제 이벤트 수신:', data);
-          // TODO: 메시지 삭제 처리 구현
+          console.log('🗑️ 메시지 삭제 이벤트 수신:', data);
+          
+          try {
+            // data 구조는 백엔드에서 정의된 형태에 따라 달라질 수 있습니다
+            // 예상 구조: { chatRoomId: number, messageId: number }
+            const { chatRoomId, messageId } = data;
+            
+            if (chatRoomId && messageId) {
+              dispatch({ 
+                type: 'DELETE_MESSAGE', 
+                payload: { chatRoomId, messageId }
+              });
+              console.log('✅ 메시지 삭제 이벤트 처리 완료:', { chatRoomId, messageId });
+            } else {
+              console.warn('⚠️ 메시지 삭제 이벤트 데이터 불완전:', data);
+            }
+          } catch (error) {
+            console.error('❌ 메시지 삭제 이벤트 처리 중 오류:', error);
+          }
         });
 
         // 멤버 참여/퇴장 이벤트 리스너들도 필요시 추가
@@ -911,6 +941,38 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return attemptSend();
   }, [currentUser, currentWorkspace, state.messages]);
 
+  // 메시지 삭제
+  const deleteMessage = useCallback(async (chatRoomId: number, messageId: number): Promise<void> => {
+    if (!currentWorkspace) throw new Error('워크스페이스가 없습니다.');
+    if (!currentUser) throw new Error('사용자 정보가 없습니다.');
+
+    try {
+      console.log('🗑️ 메시지 삭제 시도:', { chatRoomId, messageId });
+      
+      // 먼저 UI에서 즉시 제거 (낙관적 업데이트)
+      dispatch({ 
+        type: 'DELETE_MESSAGE', 
+        payload: { chatRoomId, messageId }
+      });
+
+      // API 호출
+      await chatApi.deleteMessage(parseInt(currentWorkspace.id), chatRoomId, messageId);
+      console.log('✅ 메시지 삭제 완료:', messageId);
+      
+    } catch (error) {
+      console.error('❌ 메시지 삭제 실패:', error);
+      
+      // 삭제 실패 시 메시지 복원 (API에서 다시 로드)
+      try {
+        await loadMessages(chatRoomId);
+      } catch (reloadError) {
+        console.error('❌ 메시지 목록 재로드 실패:', reloadError);
+      }
+      
+      throw error;
+    }
+  }, [currentUser, currentWorkspace, loadMessages]);
+
   // 채팅방 생성
   const createChatRoom = useCallback(async (name: string, memberIds: number[], type: 'PERSONAL' | 'GROUP'): Promise<ChatRoom> => {
     if (!currentWorkspace) throw new Error('워크스페이스가 없습니다.');
@@ -1022,6 +1084,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentChatRoomById,
         loadMessages,
         sendMessage,
+        deleteMessage,
         createChatRoom,
         createDmChatRoom,
       }}
