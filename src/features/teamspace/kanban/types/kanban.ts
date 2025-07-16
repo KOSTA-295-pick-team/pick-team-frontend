@@ -51,7 +51,7 @@ export interface KanbanBoard {
 }
 
 export interface KanbanTaskUpdateRequest {
-  title?: string;
+  subject?: string;
   content?: string;
   dueDate?: string;
   deadline?: string;

@@ -688,10 +688,19 @@ const PostCreateModal: React.FC<PostCreateModalProps> = ({
           files: files,
         })
       );
+
+      // 성공 시에만 폼 초기화 및 모달 닫기
+      setPostData({ title: "", content: "" });
+      setFiles([]);
       onClose();
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("게시글 생성 실패:", error);
+      if (error.message && error.message.includes("400")) {
+        alert("게시글 생성에 실패했습니다. 게시판 설정을 확인해주세요.");
+      } else {
+        alert("게시글 생성에 실패했습니다.");
+      }
     }
   };
 
