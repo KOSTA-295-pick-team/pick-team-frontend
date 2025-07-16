@@ -252,3 +252,19 @@ export interface VideoMember {
     profileImageUrl : string;
     joinDate: string;
 }
+
+export interface WebSocketChatMsg{
+    type:string;
+    senderEmail:string;
+    senderName:string;
+    message:string;
+    logs:WebSocketChatMsg[];
+
+}
+
+export interface VideoConferenceMsg{
+    type:string;
+    userEmail?:string;
+    participants:VideoMember[];
+
+}

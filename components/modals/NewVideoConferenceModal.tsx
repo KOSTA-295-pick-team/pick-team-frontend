@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Button, Input } from '../ui';
 import { useAuth } from '../../AuthContext';
+import { videoApi } from '../../services/videoApi';
 
 interface NewVideoConferenceModalProps {
     isOpen: boolean;
@@ -13,7 +14,7 @@ const NewVideoConferenceModal: React.FC<NewVideoConferenceModalProps> = ({ isOpe
     const navigate = useNavigate();
     const [roomName, setRoomName] = useState('');
 
-    const handleStartConference = () => {
+    const handleStartConference =async () => {
         if (!roomName.trim()) {
             alert("회의실 이름을 입력해주세요.");
             return;
@@ -22,9 +23,15 @@ const NewVideoConferenceModal: React.FC<NewVideoConferenceModalProps> = ({ isOpe
             alert("워크스페이스 정보를 찾을 수 없습니다.");
             return;
         }
-        navigate(`/ws/${currentWorkspace.id}/video/live?room=${encodeURIComponent(roomName.trim())}`);
-        setRoomName('');
-        onClose();
+        try{
+            const videoChannel = await videoApi.createVideoChannel(currentWorkspace.id,roomName);
+            navigate(`/ws/${currentWorkspace.id}/video/live?roomId=${videoChannel.id}&roomName=${encodeURIComponent(videoChannel.name)}`);
+            setRoomName('');
+            onClose();
+        }catch(error:any){
+            console.error(error);
+            alert("화상회의 채널 생성에 실패했습니다");
+        }
     };
 
     return (

@@ -7,11 +7,16 @@ export const videoApi = {
             `/workspaces/${workspaceId}/video-channels`
         );
     },
+    getVideoChannel: async (workspaceId: string, videoChannelId:string): Promise<VideoChannel> => {
+        return apiRequest<VideoChannel>(
+            `/workspaces/${workspaceId}/video-channels/${videoChannelId}`
+        );
+    },  
     createVideoChannel: async (
         workspaceId: string,
         channelName: string
-    ): Promise<string> => {
-        return await apiRequest<string>(
+    ): Promise<{id:string,name:string}> => {
+        return await apiRequest<{id:string,name:string}>(
             `/workspaces/${workspaceId}/video-channels`,
             {
                 method: 'POST',

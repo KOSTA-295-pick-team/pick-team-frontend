@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@stomp/stompjs": "^7.1.1",
+    "livekit-client": "^2.15.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.2",
-    "@heroicons/react": "^2.2.0"
+    "react-router-dom": "^7.6.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

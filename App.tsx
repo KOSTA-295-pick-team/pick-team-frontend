@@ -20,7 +20,7 @@ import {
 } from './components';
 import { Workspace, TeamProject, User as UserType, ChatRoom, ChatRoomMember, VideoChannel } from './types';
 import { MagnifyingGlassIcon, HashtagIcon, LockClosedIcon, UserGroupIcon, ArrowLeftIcon, Cog6ToothIcon, LinkIcon, ShieldCheckIcon, UserMinusIcon, NoSymbolIcon, CheckCircleIcon, XMarkIcon, ChevronDownIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { teamApi } from './services/api';
+import { ApiError, teamApi } from './services/api';
 import { videoApi } from './services/videoApi';
 
 
@@ -195,6 +195,7 @@ const TeamProjectSidebar: React.FC = () => {
         setVideoRooms(channelList);
       } catch (error: any) {
         console.error('화상회의 채널 목록 로드 실패:', error);
+        setVideoRooms([]);
       } 
     }
 
@@ -232,9 +233,23 @@ const TeamProjectSidebar: React.FC = () => {
     navigate(`/ws/${currentWorkspace.id}/chat/${roomId}`);
   };
 
-  const selectVideoRoom = (roomId: string,roomName:string) => {
+  const selectVideoRoom = async (roomId: string,roomName:string) => {
     if (currentWorkspace) {
+      try{
+        const vc:VideoChannel=await videoApi.getVideoChannel(currentWorkspace.id,roomId);
         navigate(`/ws/${currentWorkspace.id}/video/live?roomId=${roomId}&roomName=${encodeURIComponent(roomName)}`);
+      }catch(error:any){
+        if(error instanceof ApiError){
+          if(error.status===404){
+            alert("존재하지 않는 화상회의 채널입니다");
+            loadVideoRooms();
+          }else{
+            alert("알 수 없는 오류가 발생하였습니다");
+          }
+        }else{
+          alert("네트워크 오류입니다");
+        }
+      }
     }
   };
 
@@ -242,18 +257,25 @@ const TeamProjectSidebar: React.FC = () => {
     setConfirmDeleteInfo({ type: 'chat', id: roomId, name: roomName });
   };
   
-  const handleDeleteVideoRoom = (roomId: string, roomName: string) => {
+  const handleDeleteVideoRoom =async (roomId: string,roomName:string) => {
     setConfirmDeleteInfo({ type: 'video', id: roomId, name: roomName });
+   
   };
 
-  const confirmDeletion = () => {
+  const confirmDeletion =async () => {
     if (confirmDeleteInfo) {
       if (confirmDeleteInfo.type === 'chat') {
         deleteChatRoom(confirmDeleteInfo.id);
         alert(`'${confirmDeleteInfo.name}' 채팅방이 삭제(퇴장)되었습니다. (목업)`);
       } else if (confirmDeleteInfo.type === 'video') {
-        setVideoRooms(prev => prev.filter(room => room.id !== confirmDeleteInfo.id));
-        alert(`'${confirmDeleteInfo.name}' 화상회의 채널이 삭제되었습니다. (목업)`);
+         try{
+          await videoApi.deleteVideoChannel(currentWorkspace.id,confirmDeleteInfo.id);
+          loadVideoRooms();
+        }catch(e:any){
+          console.error("화상회의 채널 삭제 실패 " + e);
+          alert(`'${confirmDeleteInfo.name}' 화상회의 채널 삭제에 실패하였습니다`);
+        }
+        
       }
     }
     setConfirmDeleteInfo(null);
@@ -466,6 +488,7 @@ const AppLayout: React.FC = () => {
 
 
 function App() {
+  const [reloadState , setReloadState] = useState<boolean>(false);
   return (
     <AuthProvider>
       <HashRouter>
@@ -478,8 +501,8 @@ function App() {
             <Route path="/ws/:workspaceId" element={<HomePage />} />
             <Route path="/ws/:workspaceId/team/:teamProjectId" element={<TeamSpacePage />} />
             <Route path="/ws/:workspaceId/chat/:roomId" element={<ChatPage />} />
-            <Route path="/ws/:workspaceId/video/live" element={<VideoConferencePage />} />
             
+            <Route path="/ws/:workspaceId/video/live" element={<VideoConferencePage setReloadState={setReloadState}/>} />
             <Route path="/my-page" element={<MyPage />} />
             <Route path="/my-page/profile-edit" element={<ProfileEditPage />} />
             <Route path="/my-page/account-settings" element={<AccountSettingsPage />} />
