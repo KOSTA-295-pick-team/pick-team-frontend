@@ -214,14 +214,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // SSE 연결 및 이벤트 처리
   useEffect(() => {
     console.log('🔄 ChatProvider useEffect 실행 - currentUser:', currentUser?.id, 'currentWorkspace:', currentWorkspace?.id);
-    
-    if (!currentUser) {
-      console.log('❌ currentUser 없음, SSE 연결 건너뜀');
+      if (!currentUser) {
+      chatLogger.sse.debug('currentUser 없음, SSE 연결 건너뜀');
       return;
     }
-
+    
     if (!currentWorkspace) {
-      console.log('❌ currentWorkspace 없음, SSE 연결 건너뜀');
+      chatLogger.sse.debug('currentWorkspace 없음, SSE 연결 건너뜀');
       return;
     }
 
@@ -241,7 +240,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fallbackSyncTimer = setInterval(async () => {
         // SSE 연결이 불안정하거나 끊어진 경우에만 동작
         if (!sseService.isEventSourceConnected()) {
-          console.log('🔄 [FallbackSync] SSE 연결 불안정, 주기적 메시지 동기화 실행');
+          chatLogger.sse.debug('[FallbackSync] SSE 연결 불안정, 주기적 메시지 동기화 실행');
           
           // 현재 활성화된 채팅방이 있으면 메시지 동기화
           if (state.currentChatRoom) {
@@ -293,12 +292,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }, 12000); // 12초마다 동기화 체크 (백엔드 타임아웃 대응)
     };    const connectSse = async () => {
       if (isConnecting) {
-        console.log('⚠️ 이미 SSE 연결 중입니다.');
+        chatLogger.sse.debug('이미 SSE 연결 중입니다.');
         return;
       }
       
       if (connectionRetryCount >= maxRetries) {
-        console.error('🚫 SSE 연결 최대 재시도 횟수 초과');
+        chatLogger.sse.error('SSE 연결 최대 재시도 횟수 초과');
         return;
       }
       
@@ -306,33 +305,33 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       connectionRetryCount++;
       
       try {
-        console.log(`🔌 SSE 연결 시작... (재시도: ${connectionRetryCount}/${maxRetries}, 사용자: ${currentUser.id})`);
+        chatLogger.sse.debug(`SSE 연결 시작... (재시도: ${connectionRetryCount}/${maxRetries}, 사용자: ${currentUser.id})`);
         
         // 기존 연결 확인 및 정리
         if (sseService.isEventSourceConnected()) {
-          console.log('⚠️ 기존 SSE 연결이 활성 상태입니다. 연결을 종료합니다.');
+          chatLogger.sse.debug('기존 SSE 연결이 활성 상태입니다. 연결을 종료합니다.');
           sseService.disconnect();
           // 잠시 대기 후 새 연결 시도
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
 
         // SSE 등록 및 연결 - 순차적으로 처리
-        console.log('🔐 SSE 등록 시작...');
+        chatLogger.sse.debug('SSE 등록 시작...');
         await sseService.register();
-        console.log('✅ SSE 등록 완료');
+        chatLogger.sse.debug('SSE 등록 완료');
         
         // 등록 후 추가 대기 (Redis 반영 시간 확보)
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        console.log('🔌 SSE 연결 시작...');
+        chatLogger.sse.debug('SSE 연결 시작...');
         await sseService.connect();
-        console.log('✅ SSE 연결 완료');
+        chatLogger.sse.debug('SSE 연결 완료');
         
         isConnected = true;
         isConnecting = false;
         connectionRetryCount = 0; // 성공시 재시도 카운트 리셋
         
-        console.log('✅ SSE 연결 성공 - 이벤트 리스너 등록');
+        chatLogger.sse.debug('SSE 연결 성공 - 이벤트 리스너 등록');
         dispatch({ type: 'SET_CONNECTED', payload: true });
 
         // 연결 안정성 모니터링 타이머 설정
@@ -354,11 +353,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sseService.addEventListener('NEW_CHAT_MESSAGE', (data) => {
           try {
             const timestamp = Date.now();
-            console.log(`🔔 [${new Date(timestamp).toISOString()}] 새 메시지 SSE 수신:`, data);
+            chatLogger.sse.debug(`[${new Date(timestamp).toISOString()}] 새 메시지 SSE 수신:`, data);
             
             // 데이터 유효성 검사 (빠른 실패)
             if (!data?.messageId || !data?.chatRoomId || !data?.content) {
-              console.error('❌ 유효하지 않은 SSE 메시지 데이터:', data);
+              chatLogger.sse.error('유효하지 않은 SSE 메시지 데이터:', data);
               return;
             }
             
@@ -367,7 +366,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             // 자신이 보낸 메시지의 경우 임시 메시지가 이미 있을 수 있으므로 신중하게 처리
             if (isOwnMessage) {
-              console.log('🔄 자신이 보낸 메시지 SSE 수신, 임시 메시지 확인 중...');
+              chatLogger.sse.debug('자신이 보낸 메시지 SSE 수신, 임시 메시지 확인 중...');
               const currentMessages = state.messages[data.chatRoomId] || [];
               
               // 같은 내용의 임시 메시지가 최근에 있는지 확인 (최근 30초 이내)
@@ -421,7 +420,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             
           } catch (error) {
-            console.error('❌ 새 메시지 SSE 처리 중 오류:', error);
+            chatLogger.sse.error('새 메시지 SSE 처리 중 오류:', error);
             // 에러가 발생해도 SSE 연결을 유지
           }
         });
@@ -461,14 +460,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
       } catch (error) {
-        console.error(`❌ SSE 연결 실패 (${connectionRetryCount}/${maxRetries}):`, error);
+        chatLogger.sse.error(`SSE 연결 실패 (${connectionRetryCount}/${maxRetries}):`, error);
         isConnecting = false;
         dispatch({ type: 'SET_CONNECTED', payload: false });
         
         // 재시도
         if (connectionRetryCount < maxRetries) {
           const retryDelay = 2000 * connectionRetryCount; // 점진적 백오프
-          console.log(`🔄 ${retryDelay}ms 후 SSE 연결 재시도...`);
+          chatLogger.sse.debug(`${retryDelay}ms 후 SSE 연결 재시도...`);
           setTimeout(connectSse, retryDelay);
         }
       }
@@ -493,12 +492,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       if (isConnected) {
-        console.log('🔌 SSE 연결 해제 중...');
+        chatLogger.sse.debug('SSE 연결 해제 중...');
         sseService.disconnect();
         dispatch({ type: 'SET_CONNECTED', payload: false });
-        console.log('✅ SSE 연결 해제 완료');
+        chatLogger.sse.debug('SSE 연결 해제 완료');
       } else {
-        console.log('ℹ️ SSE 연결이 없어서 해제 건너뜀');
+        chatLogger.sse.debug('SSE 연결이 없어서 해제 건너뜀');
       }
     };
   }, [currentUser?.id, currentWorkspace?.id, state.currentChatRoom]);
@@ -783,12 +782,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // SSE 연결 상태 확인 및 재연결 시도
         if (!sseService.isEventSourceConnected()) {
-          console.log('⚠️ SSE 연결이 끊어진 상태, 재연결 시도');
+          chatLogger.sse.debug('SSE 연결이 끊어진 상태, 재연결 시도');
           try {
             await sseService.connect();
-            console.log('✅ SSE 재연결 성공');
+            chatLogger.sse.debug('SSE 재연결 성공');
           } catch (reconnectError) {
-            console.error('❌ SSE 재연결 실패:', reconnectError);
+            chatLogger.sse.error('SSE 재연결 실패:', reconnectError);
             // SSE 재연결에 실패해도 메시지 전송은 성공했으므로 계속 진행
           }
         }
@@ -797,7 +796,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // 504 에러가 빈번한 환경에서는 더 짧은 간격으로 폴백 체크
         setTimeout(async () => {
           try {
-            console.log('🔄 SSE 폴백: 메시지 목록 재로드 확인 (1차)');
+            chatLogger.sse.debug('SSE 폴백: 메시지 목록 재로드 확인 (1차)');
             const latestMessages = await chatApi.getChatMessages(parseInt(currentWorkspace.id), chatRoomId, 0, 20);
             
             // 최신 메시지들과 현재 메시지들 비교
@@ -852,7 +851,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             // SSE 연결 상태 재확인
             if (!sseService.isEventSourceConnected()) {
-              console.log('🔄 SSE 폴백: 2차 메시지 동기화 확인');
+              chatLogger.sse.debug('SSE 폴백: 2차 메시지 동기화 확인');
               const latestMessages = await chatApi.getChatMessages(parseInt(currentWorkspace.id), chatRoomId, 0, 50);
               
               const currentMessagesState = state.messages[chatRoomId] || [];

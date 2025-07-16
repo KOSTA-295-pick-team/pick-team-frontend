@@ -7,6 +7,7 @@ import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { useChat } from '../context/ChatContext';
 import { ChatRoomResponse } from '../api/chatApi';
+import { chatLogger } from '../utils/chatLogger';
 
 interface NewChatModalProps {
     isOpen: boolean;
@@ -33,7 +34,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose, onC
         profileImage: member.profileImage
     })) || [];
 
-    console.log('🗣️ [NewChatModal] 채팅 가능한 사용자 목록:', allUsersForChat);
+    chatLogger.ui.debug('채팅 가능한 사용자 목록:', allUsersForChat);
 
     const availableUsersForSelection = useMemo(() => {
         return allUsersForChat.filter(u => u.id !== currentUser?.id);
@@ -90,7 +91,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose, onC
                 const targetUser = selectedUsers[0];
                 const dmName = targetUser?.name || '알 수 없는 사용자';
                 
-                console.log('🏗️ [NewChatModal] DM 채팅방 생성 시작:', {
+                chatLogger.ui.debug('DM 채팅방 생성 시작:', {
                     chatType,
                     targetUser: { id: targetUser?.id, name: targetUser?.name },
                     memberIds,
@@ -103,11 +104,11 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose, onC
                     chatType
                 );
                 
-                console.log('🏗️ [NewChatModal] DM 채팅방 생성 완료:', newChatRoom);
+                chatLogger.ui.debug('DM 채팅방 생성 완료:', newChatRoom);
             } else {
                 // 그룹 채팅방 생성 - 선택된 사용자 ID 목록에 현재 사용자 ID도 포함
                 const memberIds = [currentUser.id, ...selectedUsers.map(u => u.id)];
-                console.log('🏗️ [NewChatModal] 그룹 채팅방 생성 시작:', {
+                chatLogger.ui.debug('그룹 채팅방 생성 시작:', {
                     chatType,
                     groupName: groupName.trim(),
                     memberIds
@@ -119,7 +120,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose, onC
                     chatType
                 );
                 
-                console.log('🏗️ [NewChatModal] 그룹 채팅방 생성 완료:', newChatRoom);
+                chatLogger.ui.debug('그룹 채팅방 생성 완료:', newChatRoom);
             }
 
             // 콜백 호출 (사이드바 목록 업데이트용)
@@ -145,7 +146,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose, onC
             onClose();
             
         } catch (error) {
-            console.error('채팅방 생성 실패:', error);
+            chatLogger.ui.error('채팅방 생성 실패:', error);
             alert('채팅방 생성에 실패했습니다. 다시 시도해주세요.');
         } finally {
             setLoading(false);

@@ -5,6 +5,7 @@ import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { chatApi, ChatRoomResponse } from '@/features/workspace/chat/api/chatApi';
 import { Team } from '@/types';
+import { chatLogger } from '@/features/workspace/chat/utils/chatLogger';
 import { 
     CogIcon,
     PlusCircleIcon, 
@@ -55,7 +56,7 @@ export const TeamProjectSidebar: React.FC = () => {
                     setTeamProjects(teams);
                 })
                 .catch(error => {
-                    console.error("팀 목록을 불러오는데 실패했습니다:", error);
+                    chatLogger.ui.error("팀 목록을 불러오는데 실패했습니다:", error);
                     setTeamProjects([]);
                 });
         }
@@ -68,8 +69,8 @@ export const TeamProjectSidebar: React.FC = () => {
             
             try {
                 const response = await chatApi.getChatRooms(Number(currentWorkspace.id));
-                console.log('🏠 [TeamProjectSidebar] 채팅방 목록 응답:', response);
-                console.log('🏠 [TeamProjectSidebar] 채팅방 목록 상세:', response.content?.map(room => ({
+                chatLogger.ui.debug('채팅방 목록 응답:', response);
+                chatLogger.ui.debug('채팅방 목록 상세:', response.content?.map(room => ({
                     id: room.id,
                     name: room.name,
                     type: room.type,
@@ -88,9 +89,9 @@ export const TeamProjectSidebar: React.FC = () => {
                         try {
                             const members = await chatApi.getChatMembers(room.id);
                             membersData[room.id] = members;
-                            console.log(`🏠 [TeamProjectSidebar] DM 채팅방 ${room.id} 멤버:`, members);
+                            chatLogger.ui.debug(`DM 채팅방 ${room.id} 멤버:`, members);
                         } catch (error) {
-                            console.error(`DM 채팅방 ${room.id}의 멤버 정보를 가져오는데 실패:`, error);
+                            chatLogger.ui.error(`DM 채팅방 ${room.id}의 멤버 정보를 가져오는데 실패:`, error);
                             membersData[room.id] = [];
                         }
                     })
@@ -101,7 +102,7 @@ export const TeamProjectSidebar: React.FC = () => {
                 setChatRooms(rooms);
                 
             } catch (error) {
-                console.error("채팅방 목록을 불러오는데 실패했습니다:", error);
+                chatLogger.ui.error("채팅방 목록을 불러오는데 실패했습니다:", error);
                 setChatRooms([]);
                 setChatRoomMembers({});
             }
@@ -128,9 +129,9 @@ export const TeamProjectSidebar: React.FC = () => {
                     ...prev,
                     [newChatRoom.id]: members
                 }));
-                console.log(`🏠 [TeamProjectSidebar] 새 DM 채팅방 ${newChatRoom.id} 멤버:`, members);
+                chatLogger.ui.debug(`새 DM 채팅방 ${newChatRoom.id} 멤버:`, members);
             } catch (error) {
-                console.error(`새 DM 채팅방 ${newChatRoom.id}의 멤버 정보를 가져오는데 실패:`, error);
+                chatLogger.ui.error(`새 DM 채팅방 ${newChatRoom.id}의 멤버 정보를 가져오는데 실패:`, error);
             }
         }
     };
@@ -139,7 +140,7 @@ export const TeamProjectSidebar: React.FC = () => {
 
     // 채팅방 이름 표시 함수
     const getChatRoomDisplayName = (room: ChatRoomResponse) => {
-        console.log('🏷️ [TeamProjectSidebar] 채팅방 이름 계산 시작:', {
+        chatLogger.ui.debug('채팅방 이름 계산 시작:', {
             id: room.id,
             name: room.name,
             type: room.type,
@@ -148,19 +149,19 @@ export const TeamProjectSidebar: React.FC = () => {
         
         // DM 채팅방인 경우
         if (room.type === 'PERSONAL') {
-            console.log('🏷️ [TeamProjectSidebar] DM 채팅방 처리 중...');
-            console.log('🏷️ [TeamProjectSidebar] 백엔드에서 온 채팅방 이름:', room.name);
+            chatLogger.ui.debug('DM 채팅방 처리 중...');
+            chatLogger.ui.debug('백엔드에서 온 채팅방 이름:', room.name);
             
             // 멤버 정보에서 상대방 이름 찾기 (우선순위 1)
             const members = chatRoomMembers[room.id];
-            console.log('🏷️ [TeamProjectSidebar] 채팅방 멤버 정보:', {
+            chatLogger.ui.debug('채팅방 멤버 정보:', {
                 roomId: room.id,
                 members,
                 currentUserId: currentUser?.id
             });
             
             if (members && currentUser) {
-                console.log('🔍 [TeamProjectSidebar] 멤버 데이터 구조 상세 분석:', {
+                chatLogger.ui.debug('멤버 데이터 구조 상세 분석:', {
                     roomId: room.id,
                     members: members.map(m => ({
                         ...m,
@@ -172,7 +173,7 @@ export const TeamProjectSidebar: React.FC = () => {
                 });
                 
                 const otherMember = members.find(member => {
-                    console.log('🔍 [TeamProjectSidebar] 개별 멤버 검사:', {
+                    chatLogger.ui.debug('개별 멤버 검사:', {
                         member,
                         memberAccount: member.account,
                         memberAccountId: member.accountId,
@@ -187,7 +188,7 @@ export const TeamProjectSidebar: React.FC = () => {
                            (member.accountId && member.accountId !== currentUser.id);
                 });
                 
-                console.log('🏷️ [TeamProjectSidebar] 상대방 멤버 찾기 결과:', {
+                chatLogger.ui.debug('상대방 멤버 찾기 결과:', {
                     allMembers: members.map(m => ({ 
                         account: m.account,
                         accountId: m.accountId, 
@@ -205,28 +206,28 @@ export const TeamProjectSidebar: React.FC = () => {
                         otherMember.name || 
                         otherMember.accountName || 
                         `사용자 ${otherMember.account || otherMember.accountId || otherMember.id}`;
-                    console.log('🏷️ [TeamProjectSidebar] DM 채팅방 - 멤버 정보에서 상대방 이름 사용:', displayName);
+                    chatLogger.ui.debug('DM 채팅방 - 멤버 정보에서 상대방 이름 사용:', displayName);
                     return displayName;
                 }
             }
             
             // 백엔드에서 설정된 이름이 있고, 유효한 이름이면 사용 (우선순위 2)
             if (room.name && room.name.trim() !== '' && room.name !== 'DM' && !room.name.includes('대화:')) {
-                console.log('🏷️ [TeamProjectSidebar] DM 채팅방 - 백엔드에서 설정된 유효한 이름 사용:', room.name);
+                chatLogger.ui.debug('DM 채팅방 - 백엔드에서 설정된 유효한 이름 사용:', room.name);
                 return room.name;
             }
             
             // 멤버 정보가 없는 경우 임시 표시
-            console.log('🏷️ [TeamProjectSidebar] DM 채팅방 - 멤버 정보 없음, 임시 표시');
+            chatLogger.ui.debug('DM 채팅방 - 멤버 정보 없음, 임시 표시');
             return `DM ${room.id}`;
         }
         
         // 그룹 채팅방이면 이름이 있으면 사용, 없으면 기본 표시
         if (room.name && room.name.trim() !== '') {
-            console.log('🏷️ [TeamProjectSidebar] 그룹 채팅방 - 이름 사용:', room.name);
+            chatLogger.ui.debug('그룹 채팅방 - 이름 사용:', room.name);
             return room.name;
         }
-        console.log('🏷️ [TeamProjectSidebar] 그룹 채팅방 - 기본 표시:', `그룹 채팅 ${room.id}`);
+        chatLogger.ui.debug('그룹 채팅방 - 기본 표시:', `그룹 채팅 ${room.id}`);
         return `그룹 채팅 ${room.id}`;
     };
 
