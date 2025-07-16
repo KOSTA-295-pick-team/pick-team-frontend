@@ -68,6 +68,37 @@ export const createPost = createAsyncThunk(
   }
 );
 
+// 파일과 함께 게시글 생성
+export const createPostWithFiles = createAsyncThunk(
+  "bulletin/createPostWithFiles",
+  async (
+    {
+      teamId,
+      accountId,
+      post,
+      files,
+    }: {
+      teamId: string;
+      accountId: string;
+      post: { title: string; content: string; boardId: number };
+      files?: File[];
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const newPost = await bulletinApi.createPostWithFiles(
+        teamId,
+        accountId,
+        post,
+        files
+      );
+      return newPost;
+    } catch (error: any) {
+      return rejectWithValue(error.message || "게시글 생성에 실패했습니다.");
+    }
+  }
+);
+
 // 게시글 수정
 export const updatePost = createAsyncThunk(
   "bulletin/updatePost",
@@ -85,6 +116,37 @@ export const updatePost = createAsyncThunk(
   ) => {
     try {
       const updatedPost = await bulletinApi.updatePost(postId, accountId, post);
+      return updatedPost;
+    } catch (error: any) {
+      return rejectWithValue(error.message || "게시글 수정에 실패했습니다.");
+    }
+  }
+);
+
+// 파일과 함께 게시글 수정
+export const updatePostWithFiles = createAsyncThunk(
+  "bulletin/updatePostWithFiles",
+  async (
+    {
+      postId,
+      accountId,
+      post,
+      files,
+    }: {
+      postId: number;
+      accountId: string;
+      post: { title: string; content: string };
+      files?: File[];
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const updatedPost = await bulletinApi.updatePostWithFiles(
+        postId,
+        accountId,
+        post,
+        files
+      );
       return updatedPost;
     } catch (error: any) {
       return rejectWithValue(error.message || "게시글 수정에 실패했습니다.");
@@ -112,4 +174,4 @@ export const deletePost = createAsyncThunk(
       return rejectWithValue(error.message || "게시글 삭제에 실패했습니다.");
     }
   }
-); 
+);

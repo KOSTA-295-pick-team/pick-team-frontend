@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { Announcement } from "@/types";
+import { Announcement } from "@/features/teamspace/announcement/types/announcement";
 import * as thunks from "@/features/teamspace/announcement/store/announcementThunks";
 
 interface AnnouncementState {
@@ -59,6 +59,31 @@ const announcementSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
+      // 공지사항 목록 조회 (페이징 지원)
+      .addCase(thunks.fetchAnnouncementsWithPaging.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(
+        thunks.fetchAnnouncementsWithPaging.fulfilled,
+        (state, action) => {
+          state.loading = false;
+          state.announcements = action.payload.announcements;
+          state.currentPage = action.payload.currentPage;
+          state.totalPages = action.payload.totalPages;
+          state.totalElements = action.payload.totalElements;
+          state.pageSize = action.payload.size;
+          state.hasNext = action.payload.hasNext;
+          state.hasPrevious = action.payload.hasPrevious;
+        }
+      )
+      .addCase(
+        thunks.fetchAnnouncementsWithPaging.rejected,
+        (state, action) => {
+          state.loading = false;
+          state.error = action.payload as string;
+        }
+      )
       // 공지사항 생성
       .addCase(thunks.createAnnouncement.pending, (state) => {
         state.loading = true;
@@ -109,4 +134,4 @@ const announcementSlice = createSlice({
 });
 
 export const { clearError, setAnnouncements } = announcementSlice.actions;
-export default announcementSlice.reducer; 
+export default announcementSlice.reducer;
