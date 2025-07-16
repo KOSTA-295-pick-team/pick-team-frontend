@@ -5,6 +5,7 @@ import { Workspace } from '@/types';
 import CreateWorkspaceModal from '@/features/workspace/management/components/CreateWorkspaceModal';
 import JoinWorkspaceModal from '@/features/workspace/management/components/JoinWorkspaceModal';
 import { PlusCircleIcon, LinkIcon } from '@/assets/icons';
+import { getWorkspaceIconSrc } from '@/lib/imageUtils';
 
 export const WorkspaceSidebar: React.FC = () => {
     const { workspaces, currentWorkspace, setCurrentWorkspaceById, loading } = useWorkspace();
@@ -43,7 +44,7 @@ export const WorkspaceSidebar: React.FC = () => {
                         >
                             {ws.iconUrl ? (
                                 <img 
-                                    src={ws.iconUrl} 
+                                    src={getWorkspaceIconSrc(ws.iconUrl) || ws.iconUrl} 
                                     alt={ws.name} 
                                     className="w-full h-full object-cover"
                                 />

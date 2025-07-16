@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { BellIcon } from '@/assets/icons';
+import { getProfileImageSrc, handleImageError } from '@/lib/imageUtils';
 
 export const GlobalHeader: React.FC = () => {
     const { currentUser, logout } = useAuth();
@@ -40,15 +41,9 @@ export const GlobalHeader: React.FC = () => {
                     >
                         <img
                             className="h-8 w-8 rounded-full object-cover border-2 border-white"
-                            src={
-                                currentUser.profileImageUrl ||
-                                `https://picsum.photos/seed/${currentUser.id}/32/32`
-                            }
+                            src={getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 32)}
                             alt="User Profile"
-                            onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=6366f1&color=fff&size=32`;
-                            }}
+                            onError={(e) => handleImageError(e, currentUser.id, 32)}
                         />
                     </button>
                     {profileDropdownOpen && (

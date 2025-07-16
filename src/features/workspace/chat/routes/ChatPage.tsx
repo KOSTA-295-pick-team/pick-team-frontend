@@ -8,6 +8,7 @@ import { PlusCircleIcon, XCircleIcon } from '@/assets/icons';
 import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
 import Linkify from 'react-linkify';
 import { chatLogger } from '../utils/chatLogger';
+import { getFileUrl } from '@/lib/imageUtils';
 
 // 메시지 컴포넌트를 memo로 최적화하여 깜빡거림 방지
 const MessageItem = memo<{
@@ -73,9 +74,9 @@ const MessageItem = memo<{
         {msg.attachment && (
           <div className="mb-1 p-2 border border-neutral-300 rounded bg-white/50">
             {msg.attachment.type === 'image' ? (
-              <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
+              <img src={getFileUrl(msg.attachment.url) || msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs max-h-48 rounded"/>
             ) : (
-              <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
+              <a href={getFileUrl(msg.attachment.url) || msg.attachment.url} target="_blank" rel="noopener noreferrer" className="text-sm underline flex items-center">
                 <PlusCircleIcon className="w-4 h-4 mr-1"/> {msg.attachment.fileName}
               </a>
             )}

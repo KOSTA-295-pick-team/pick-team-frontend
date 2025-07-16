@@ -5,6 +5,7 @@ import { Card, Button, Input } from '@/components/ui';
 import { User } from '@/features/user/types/user';
 import { ChatBubbleIcon } from '@/assets/icons';
 import { workspaceApi } from '@/features/workspace/management/api/workspaceApi';
+import { getProfileImageSrc, handleImageError } from '@/lib/imageUtils';
 // import { videoConferenceApi } from '@/api/videoConferenceApi'; // 경로 수정, 아직 파일 없음
 
 export const VideoConferencePage: React.FC = () => {
@@ -79,9 +80,10 @@ export const VideoConferencePage: React.FC = () => {
                 {participants.map((member: User) => ( // 타입 명시
                 <div key={member.id} className="bg-neutral-700 rounded aspect-video flex flex-col items-center justify-center text-white relative">
                     <img 
-                    src={member.profileImageUrl || `https://picsum.photos/seed/${member.id}/120/120`} 
+                    src={getProfileImageSrc(member.profileImageUrl, member.id, 120)} 
                     alt={member.name} 
                     className={`w-16 h-16 md:w-20 md:h-20 rounded-full mb-2 ${isCameraOff && member.id === currentUser.id ? 'opacity-50' : ''}`}
+                    onError={(e) => handleImageError(e, member.id, 120)}
                     />
                     <p className="text-sm">{member.name} {member.id === currentUser.id && '(나)'}</p>
                     {isMuted && member.id === currentUser.id && (

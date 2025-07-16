@@ -10,20 +10,7 @@ import {
 import { UserIcon, CogIcon } from "@/assets/icons";
 import { User } from "@/features/user/types/user";
 import { userApi } from "@/lib/userApi";
-
-// 프로필 이미지 URL 생성 유틸리티
-const getProfileImageSrc = (profileImageUrl?: string | null, userId?: string, size = 128) => {
-  if (profileImageUrl) {
-    return profileImageUrl;
-  }
-  return `https://picsum.photos/seed/${userId || 'default'}/${size}/${size}`;
-};
-
-// 이미지 에러 핸들링
-const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>, userId?: string, size = 128) => {
-  const target = e.target as HTMLImageElement;
-  target.src = `https://picsum.photos/seed/${userId || 'default'}/${size}/${size}`;
-};
+import { getProfileImageSrc, handleImageError } from "@/lib/imageUtils";
 
 export const MyPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -42,7 +29,7 @@ export const MyPage: React.FC = () => {
         <Card title="마이페이지">
           <div className="text-center mb-8">
             <img
-              key={currentUser.profileImageUrl || "default"}
+              key={`${currentUser.profileImageUrl || "default"}-${Date.now()}`}
               src={getProfileImageSrc(
                 currentUser.profileImageUrl,
                 currentUser.id,
@@ -115,6 +102,7 @@ export const ProfileEditPage: React.FC = () => {
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(
     null
   );
+  const [hasUploadedImage, setHasUploadedImage] = useState(false); // 업로드 상태 추적
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -133,9 +121,13 @@ export const ProfileEditPage: React.FC = () => {
         preferWorkstyle: currentUser.preferWorkstyle || "",
         dislikeWorkstyle: currentUser.dislikeWorkstyle || "",
       });
-      setProfileImagePreview(
-        getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 150)
-      );
+      
+      // 업로드 중이 아닐 때만 미리보기 업데이트
+      if (!hasUploadedImage) {
+        setProfileImagePreview(
+          getProfileImageSrc(currentUser.profileImageUrl, currentUser.id, 150)
+        );
+      }
     } else {
       const timer = setTimeout(() => {
         if (!currentUser) {
@@ -145,7 +137,7 @@ export const ProfileEditPage: React.FC = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [currentUser, navigate]); // currentUser 전체를 의존성으로 설정
+  }, [currentUser, navigate, hasUploadedImage]); // hasUploadedImage 의존성 추가
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -175,16 +167,18 @@ export const ProfileEditPage: React.FC = () => {
 
     setIsUploadingImage(true);
     setImageError(null);
+    setHasUploadedImage(true); // 업로드 시작 시 플래그 설정
 
     try {
       const response = await userApi.uploadProfileImage(profileImageFile);
       const imageUrl = response.data.profileImageUrl;
 
-      setProfileImagePreview(
-        getProfileImageSrc(imageUrl, currentUser?.id || "", 150)
-      );
+      // 업로드된 이미지 URL로 즉시 미리보기 업데이트
+      const fullImageUrl = getProfileImageSrc(imageUrl, currentUser?.id || "", 150);
+      setProfileImagePreview(`${fullImageUrl}?t=${Date.now()}`);
       setProfileImageFile(null);
 
+      // AuthContext의 사용자 정보 업데이트
       updateUserProfile({
         ...currentUser,
         profileImageUrl: imageUrl,
@@ -192,8 +186,17 @@ export const ProfileEditPage: React.FC = () => {
 
       // 최신 프로필 정보를 서버에서 다시 가져오기
       await refreshProfile();
+      
+      // 추가적으로 미리보기를 다시 설정하여 확실히 갱신
+      setTimeout(() => {
+        const updatedImageUrl = getProfileImageSrc(imageUrl, currentUser?.id || "", 150);
+        setProfileImagePreview(`${updatedImageUrl}?t=${Date.now()}`);
+        setHasUploadedImage(false); // 업로드 완료 후 플래그 해제
+      }, 500);
+      
     } catch (error: any) {
       setImageError(error.message || "이미지 업로드 중 오류가 발생했습니다.");
+      setHasUploadedImage(false); // 에러 시에도 플래그 해제
     } finally {
       setIsUploadingImage(false);
     }
@@ -204,6 +207,7 @@ export const ProfileEditPage: React.FC = () => {
 
     setIsUploadingImage(true);
     setImageError(null);
+    setHasUploadedImage(true); // 삭제 시작 시 플래그 설정
 
     try {
       // 프로필 이미지를 null로 설정하여 삭제
@@ -215,14 +219,23 @@ export const ProfileEditPage: React.FC = () => {
         ...currentUser,
         profileImageUrl: null 
       });
+      
+      // 기본 이미지로 미리보기 설정
       setProfileImagePreview(
         getProfileImageSrc(null, currentUser?.id || "", 150)
       );
 
       // 최신 프로필 정보를 서버에서 다시 가져오기
       await refreshProfile();
+      
+      // 삭제 완료 후 플래그 해제
+      setTimeout(() => {
+        setHasUploadedImage(false);
+      }, 500);
+      
     } catch (error: any) {
       setImageError(error.message || "이미지 삭제 중 오류가 발생했습니다.");
+      setHasUploadedImage(false); // 에러 시에도 플래그 해제
     } finally {
       setIsUploadingImage(false);
     }

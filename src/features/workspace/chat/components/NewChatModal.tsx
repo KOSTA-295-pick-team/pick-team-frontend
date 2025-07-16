@@ -8,6 +8,7 @@ import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { useChat } from '../context/ChatContext';
 import { ChatRoomResponse } from '../api/chatApi';
 import { chatLogger } from '../utils/chatLogger';
+import { getProfileImageSrc } from '@/lib/imageUtils';
 
 interface NewChatModalProps {
     isOpen: boolean;
@@ -55,7 +56,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose, onC
         const user = item as User;
         return (
             <div className="flex items-center space-x-2">
-                <img src={user.profileImageUrl || `https://picsum.photos/seed/${user.id}/30/30`} alt={user.name} className="w-6 h-6 rounded-full" />
+                <img src={getProfileImageSrc(user.profileImageUrl, user.id, 30)} alt={user.name} className="w-6 h-6 rounded-full" />
                 <span>{user.name}</span>
                 {isSelected && <span className="text-primary ml-auto">✓</span>}
             </div>
