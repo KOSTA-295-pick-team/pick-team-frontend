@@ -7,6 +7,7 @@ import { Card, TextArea, Button } from '@/components/ui';
 import { PlusCircleIcon, XCircleIcon } from '@/assets/icons';
 import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
 import Linkify from 'react-linkify';
+import { chatLogger } from '../utils/chatLogger';
 
 // 메시지 컴포넌트를 memo로 최적화하여 깜빡거림 방지
 const MessageItem = memo<{
@@ -106,13 +107,13 @@ const MessageItem = memo<{
             }
             // 3. 모든 방법이 실패한 경우
             else {
-              console.warn(`⚠️ 메시지 ${msg.id} 타임스탬프 정보 없음:`, { timestamp: msg.timestamp, createdAt: msg.createdAt });
+              chatLogger.ui.warn(`메시지 ${msg.id} 타임스탬프 정보 없음`, { timestamp: msg.timestamp, createdAt: msg.createdAt });
               return '시간 정보 없음';
             }
             
             // 유효한 Date 객체인지 검증
             if (isNaN(messageDate.getTime())) {
-              console.warn(`⚠️ 메시지 ${msg.id} 잘못된 타임스탬프:`, { timestamp: msg.timestamp, createdAt: msg.createdAt, messageDate });
+              chatLogger.ui.warn(`메시지 ${msg.id} 잘못된 타임스탬프`, { timestamp: msg.timestamp, createdAt: msg.createdAt, messageDate });
               return '시간 정보 없음';
             }
             
@@ -176,7 +177,7 @@ export const ChatPage: React.FC = () => {
   }, [messages.length, loadedMessageCount]);
 
   useEffect(() => {
-    console.log('ChatPage useEffect 실행:', { 
+    chatLogger.ui.debug('ChatPage useEffect 실행', { 
       currentRoomId, 
       currentUser: currentUser?.id, 
       workspaceId,
@@ -185,18 +186,18 @@ export const ChatPage: React.FC = () => {
     
     const initializeChat = async () => {
       if (!currentUser) {
-        console.log('사용자 없음, 로그인 페이지로 이동');
+        chatLogger.ui.warn('사용자 없음, 로그인 페이지로 이동');
         navigate('/login');
         return;
       }
 
       if (!currentWorkspace) {
-        console.log('워크스페이스 로딩 중... 기다리는 중');
+        chatLogger.ui.debug('워크스페이스 로딩 중... 기다리는 중');
         return;
       }
       
       if (currentRoomId) {
-        console.log('채팅방 ID로 초기화 시도:', currentRoomId);
+        chatLogger.ui.info('채팅방 ID로 초기화 시도', { currentRoomId });
         
         // 새 채팅방으로 변경될 때 메시지 로드 카운트 리셋
         setLoadedMessageCount(100);
@@ -205,12 +206,12 @@ export const ChatPage: React.FC = () => {
         try {
           await setCurrentChatRoomById(currentRoomId);
           await loadMessages(currentRoomId);
-          console.log('채팅 초기화 완료');
+          chatLogger.ui.info('채팅 초기화 완료');
         } catch (error) {
-          console.error('채팅 초기화 실패:', error);
+          chatLogger.ui.error('채팅 초기화 실패', error);
         }
       } else {
-        console.log('채팅방 ID 없음, 워크스페이스 홈으로 이동');
+        chatLogger.ui.warn('채팅방 ID 없음, 워크스페이스 홈으로 이동');
         if(workspaceId) navigate(`/ws/${workspaceId}`);
         else navigate('/');
       }
@@ -243,7 +244,7 @@ export const ChatPage: React.FC = () => {
       try {
         await sendMessage(currentRoomId, messageContent);
       } catch (error) {
-        console.error('메시지 전송 실패:', error);
+        chatLogger.ui.error('메시지 전송 실패', error);
         // 전송 실패 시 메시지를 복원하지 않음 (이미 임시 메시지로 표시됨)
         alert('메시지 전송에 실패했습니다. 네트워크 연결을 확인해주세요.');
       }
@@ -257,7 +258,7 @@ export const ChatPage: React.FC = () => {
     try {
       await deleteMessage(currentRoomId, messageId);
     } catch (error) {
-      console.error('메시지 삭제 실패:', error);
+      chatLogger.ui.error('메시지 삭제 실패', error);
       alert('메시지 삭제에 실패했습니다. 다시 시도해주세요.');
     }
   }, [currentRoomId, deleteMessage]);
@@ -276,69 +277,28 @@ export const ChatPage: React.FC = () => {
     
     // DM 채팅방인 경우 상대방 이름으로 표시
     if (room.type === 'PERSONAL') {
-      console.log('🏷️ [ChatPage] DM 채팅방 제목 생성 중...', { 
-        room, 
-        members: room.members,
-        currentUserId: currentUser?.id 
-      });
-      
       // 멤버 정보에서 상대방 찾기 (백엔드 이름은 무시)
       if (room.members && room.members.length > 0 && currentUser) {
-        console.log('🏷️ [ChatPage] 멤버 정보 상세 분석:', {
-          members: room.members,
-          membersDetail: room.members.map(m => ({
-            ...m,
-            type: typeof m,
-            keys: Object.keys(m)
-          })),
-          currentUserId: currentUser.id,
-          currentUserIdType: typeof currentUser.id
-        });
-        
         const otherMember = room.members.find(member => {
-          console.log('🔍 [ChatPage] 멤버 검사:', {
-            member,
-            memberAccountId: member.accountId,
-            memberId: member.id,
-            memberUserId: member.userId,
-            memberKeys: Object.keys(member),
-            currentUserId: currentUser.id,
-            currentUserIdType: typeof currentUser.id
-          });
-          
           // account 필드로 비교 (백엔드 구조에 맞춤)
           return member.account !== undefined && 
                  member.account !== null && 
                  Number(member.account) !== Number(currentUser.id);
         });
         
-        console.log('🏷️ [ChatPage] 상대방 멤버 찾기 결과:', {
-          allMembers: room.members.map(m => ({ 
-            account: m.account, 
-            name: m.name,
-            id: m.id,
-            keys: Object.keys(m)
-          })),
-          currentUserId: currentUser.id,
-          otherMember
-        });
-        
         if (otherMember) {
           // 수정된 필드명으로 이름 가져오기
           const displayName = otherMember.name || `사용자 ${otherMember.account}`;
-          console.log('🏷️ [ChatPage] DM 채팅방 - 멤버 정보에서 상대방 이름 사용:', displayName);
           return displayName;
         }
       }
       
       // 멤버 정보가 없는 경우에만 백엔드 이름 확인
       if (room.name && room.name.trim() !== '' && room.name !== 'DM' && !room.name.includes('대화:')) {
-        console.log('🏷️ [ChatPage] DM 채팅방 - 백엔드에서 설정된 유효한 이름 사용:', room.name);
         return room.name;
       }
       
       // 모든 방법이 실패한 경우 임시 표시
-      console.log('🏷️ [ChatPage] DM 채팅방 - 정보 없음, 임시 표시');
       return `DM ${room.id}`;
     }
     

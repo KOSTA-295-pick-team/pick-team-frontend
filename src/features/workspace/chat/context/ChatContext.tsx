@@ -3,6 +3,7 @@ import { chatApi } from '../api/chatApi';
 import { sseService } from '../services/sseService';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
+import { chatLogger } from '../utils/chatLogger';
 
 // 타입 정의
 export interface ChatMessage {
@@ -106,7 +107,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         );
         
         if (recentTempMessages.length > 0) {
-          console.log('🔄 실제 메시지 수신으로 임시 메시지 제거:', recentTempMessages.map(m => m.id));
+          chatLogger.context.debug('실제 메시지 수신으로 임시 메시지 제거', recentTempMessages.map(m => m.id));
           // 임시 메시지들 제거
           const withoutTempMessages = existingMessages.filter(msg => 
             !recentTempMessages.some(temp => temp.id === msg.id)
@@ -120,12 +121,16 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         const messageExists = existingMessages.some(msg => msg.id === newMessage.id);
         
         if (messageExists) {
-          console.log('🚫 중복 메시지 무시:', newMessage.id, '채팅방:', action.payload.chatRoomId);
+          chatLogger.context.debug('중복 메시지 무시', { messageId: newMessage.id, chatRoomId: action.payload.chatRoomId });
           return state;
         }
       }
       
-      console.log('✅ 새 메시지 추가:', newMessage.id, '채팅방:', action.payload.chatRoomId, '임시 메시지:', isTemporaryMessage);
+      chatLogger.context.debug('새 메시지 추가', { 
+        messageId: newMessage.id, 
+        chatRoomId: action.payload.chatRoomId, 
+        isTemporary: isTemporaryMessage 
+      });
       
       // 성능 최적화: 새 메시지가 최신인 경우 끝에 바로 추가
       const lastMessage = existingMessages[existingMessages.length - 1];

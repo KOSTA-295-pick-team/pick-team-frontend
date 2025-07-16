@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
+import { chatLogger } from '../utils/chatLogger';
 
 export interface SseEvent {
   type: string;
@@ -57,26 +58,16 @@ class SseService {
   // SSE 연결 등록 (Step 1)
   async register(): Promise<void> {
     try {
-      console.log('🔐 SSE 등록 시작:', {
-        timestamp: new Date().toISOString(),
-        url: '/sse/register'
-      });
+      chatLogger.sse.info('SSE 등록 시작');
       
       const response = await apiRequest('/sse/register', { method: 'POST' });
       
-      console.log('🔐 SSE 등록 완료 응답:', {
-        timestamp: new Date().toISOString(),
-        response: response
-      });
+      chatLogger.sse.info('SSE 등록 완료', { response });
       
       // 백엔드 등록 처리 대기 (Redis 저장 완료 대기)
       await new Promise(resolve => setTimeout(resolve, 200));
     } catch (error) {
-      console.error('🔐 SSE 등록 실패:', {
-        timestamp: new Date().toISOString(),
-        error: error,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      });
+      chatLogger.sse.error('SSE 등록 실패', { error });
       throw error;
     }
   }
@@ -85,7 +76,7 @@ class SseService {
   async connect(): Promise<void> {
     // 기존 연결이 있고 실제로 연결된 상태인 경우에만 반환
     if (this.isConnected && this.eventSource?.readyState === EventSource.OPEN) {
-      console.log('⚠️ 이미 SSE에 연결되어 있습니다. 상태:', {
+      chatLogger.sse.warn('이미 SSE에 연결되어 있습니다', {
         isConnected: this.isConnected,
         readyState: this.eventSource?.readyState,
         readyStateText: this.getReadyStateText()
@@ -95,26 +86,27 @@ class SseService {
 
     // 기존 연결 정리 (상태가 불일치하거나 끊어진 경우)
     if (this.eventSource) {
-      console.log('🧹 기존 SSE 연결 정리:', {
+      chatLogger.sse.debug('기존 SSE 연결 정리', {
         readyState: this.eventSource.readyState,
         readyStateText: this.getReadyStateText()
       });
       this.eventSource.close();
       this.eventSource = null;
       this.isConnected = false;
-    }    try {
+    }
+
+    try {
       // 매 연결 시도마다 새로 등록 (동시성 문제 해결)
-      console.log('🔄 SSE 재등록 수행 중...');
+      chatLogger.sse.info('SSE 재등록 수행 중...');
       await this.register();
 
       // SSE 연결 with timeout 옵션
       // 504 에러 대응을 위해 더 짧은 타임아웃으로 빠른 재연결
       const sseUrl = '/api/sse/subscribe';
-      console.log('🔌 SSE 연결 시도:', sseUrl);
-      console.log('🔌 현재 시간:', new Date().toISOString());
+      chatLogger.sse.info('SSE 연결 시도', { url: sseUrl });
 
       this.eventSource = new EventSource(sseUrl);
-      console.log('📡 EventSource 생성됨, 초기 상태:', {
+      chatLogger.sse.debug('EventSource 생성됨', {
         readyState: this.eventSource.readyState,
         readyStateText: this.getReadyStateText(),
         url: this.eventSource.url,
@@ -124,7 +116,7 @@ class SseService {
       // 백엔드 30분, nginx 10분에 맞춰 연결 타임아웃 설정 (5분으로 조정)
       const connectionTimeout = setTimeout(() => {
         if (this.eventSource && this.eventSource.readyState === EventSource.CONNECTING) {
-          console.log('⏰ SSE 연결 타임아웃 (5분), 재시도. 현재 상태:', {
+          chatLogger.sse.warn('SSE 연결 타임아웃 (5분), 재시도', {
             readyState: this.eventSource.readyState,
             readyStateText: this.getReadyStateText(),
             url: this.eventSource.url,
@@ -136,15 +128,10 @@ class SseService {
         }
       }, 300000); // 5분 = 300,000ms
 
-      this.eventSource.onopen = (event) => {
-        console.log('✅ SSE 연결 성공!', {
-          timestamp: new Date().toISOString(),
+      this.eventSource.onopen = () => {
+        chatLogger.sse.info('SSE 연결 성공!', {
           readyState: this.eventSource?.readyState,
           readyStateText: this.getReadyStateText(),
-          event: event,
-          eventType: event.type,
-          target: event.target,
-          timeStamp: event.timeStamp,
           url: this.eventSource?.url
         });
         clearTimeout(connectionTimeout); // 타임아웃 해제
@@ -156,16 +143,12 @@ class SseService {
       };
 
       this.eventSource.onerror = (error) => {
-        console.error('❌ SSE 연결 오류 상세:', {
+        chatLogger.sse.error('SSE 연결 오류', {
           error: error,
-          timestamp: new Date().toISOString(),
           readyState: this.eventSource?.readyState,
           readyStateText: this.getReadyStateText(),
           url: this.eventSource?.url,
           isConnected: this.isConnected,
-          errorType: error.type,
-          target: error.target,
-          timeStamp: error.timeStamp,
           message: (error as any).message || 'No error message'
         });
         
@@ -176,19 +159,19 @@ class SseService {
         
         // EventSource 상태별 처리
         if (this.eventSource?.readyState === EventSource.CLOSED) {
-          console.log('🔄 SSE 연결이 완전히 닫힘, 재연결 시도');
+          chatLogger.sse.info('SSE 연결이 완전히 닫힘, 재연결 시도');
           this.scheduleReconnect();
         } else if (this.eventSource?.readyState === EventSource.CONNECTING) {
-          console.log('🔄 SSE 연결 시도 중 오류, 잠시 대기 후 재연결');
+          chatLogger.sse.info('SSE 연결 시도 중 오류, 잠시 대기 후 재연결');
           // CONNECTING 상태에서 오류가 발생하면 재등록 후 재연결
           setTimeout(() => {
             if (this.eventSource?.readyState !== EventSource.OPEN) {
-              console.log('🔄 연결 실패 확인, 재등록 후 재연결 시도');
+              chatLogger.sse.info('연결 실패 확인, 재등록 후 재연결 시도');
               this.scheduleReconnect();
             }
           }, 2000);
         } else {
-          console.log('🔄 SSE 기타 오류, 즉시 재연결');
+          chatLogger.sse.info('SSE 기타 오류, 즉시 재연결');
           this.scheduleReconnect();
         }
       };
@@ -197,19 +180,16 @@ class SseService {
         try {
           this.lastMessageTime = Date.now(); // 메시지 수신 시간 업데이트
           const data = JSON.parse(event.data);
-          console.log('📨 SSE 메시지 수신 상세:', {
-            timestamp: new Date().toISOString(),
+          chatLogger.sse.debug('SSE 메시지 수신', { 
             data: data,
-            rawEvent: event,
             origin: event.origin,
             lastEventId: event.lastEventId
           });
           this.handleSseEvent(data);
         } catch (error) {
-          console.error('SSE 메시지 파싱 오류:', {
+          chatLogger.sse.error('SSE 메시지 파싱 오류', {
             error: error,
-            rawData: event.data,
-            event: event
+            rawData: event.data
           });
         }
       };
@@ -218,7 +198,7 @@ class SseService {
       this.setupEventListeners();
 
     } catch (error) {
-      console.error('SSE 연결 실패:', error);
+      chatLogger.sse.error('SSE 연결 실패', error);
       this.scheduleReconnect();
       throw error;
     }
@@ -246,7 +226,7 @@ class SseService {
         const data = JSON.parse(event.data);
         this.enqueueMessage('NEW_CHAT_MESSAGE', data);
       } catch (error) {
-        console.error('NEW_CHAT_MESSAGE 파싱 오류:', error);
+        chatLogger.sse.error('NEW_CHAT_MESSAGE 파싱 오류', error);
       }
     });
 
@@ -256,7 +236,7 @@ class SseService {
         const data = JSON.parse(event.data);
         this.enqueueMessage('CHAT_MEMBER_JOINED', data);
       } catch (error) {
-        console.error('CHAT_MEMBER_JOINED 파싱 오류:', error);
+        chatLogger.sse.error('CHAT_MEMBER_JOINED 파싱 오류', error);
       }
     });
 
@@ -266,7 +246,7 @@ class SseService {
         const data = JSON.parse(event.data);
         this.enqueueMessage('CHAT_MEMBER_LEFT', data);
       } catch (error) {
-        console.error('CHAT_MEMBER_LEFT 파싱 오류:', error);
+        chatLogger.sse.error('CHAT_MEMBER_LEFT 파싱 오류', error);
       }
     });
 
@@ -276,14 +256,14 @@ class SseService {
         const data = JSON.parse(event.data);
         this.enqueueMessage('CHAT_MESSAGE_DELETED', data);
       } catch (error) {
-        console.error('CHAT_MESSAGE_DELETED 파싱 오류:', error);
+        chatLogger.sse.error('CHAT_MESSAGE_DELETED 파싱 오류', error);
       }
     });
   }
 
   // SSE 이벤트 처리 (큐 기반)
   private handleSseEvent(data: any): void {
-    console.log('📨 SSE 이벤트 수신:', data);
+    chatLogger.sse.debug('SSE 이벤트 수신', data);
     
     if (data.type) {
       // 메시지를 큐에 추가
@@ -301,12 +281,12 @@ class SseService {
 
     // 큐 크기 제한
     if (this.messageQueue.length >= this.maxQueueSize) {
-      console.warn(`⚠️ 메시지 큐가 가득참 (${this.maxQueueSize}), 오래된 메시지 제거`);
+      chatLogger.sse.warn(`메시지 큐가 가득참 (${this.maxQueueSize}), 오래된 메시지 제거`);
       this.messageQueue.shift(); // 가장 오래된 메시지 제거
     }
 
     this.messageQueue.push(message);
-    console.log(`📥 메시지 큐에 추가: ${eventType}, 큐 크기: ${this.messageQueue.length}`);
+    chatLogger.sse.debug(`메시지 큐에 추가: ${eventType}, 큐 크기: ${this.messageQueue.length}`);
 
     // 큐 처리 시작
     this.processMessageQueue();
@@ -323,14 +303,14 @@ class SseService {
     try {
       while (this.messageQueue.length > 0) {
         const batch = this.messageQueue.splice(0, this.batchSize);
-        console.log(`🔄 배치 처리 시작: ${batch.length}개 메시지`);
+        chatLogger.sse.debug(`배치 처리 시작: ${batch.length}개 메시지`);
 
         // 배치 내 메시지들을 순차 처리로 변경 (안정성 향상)
         for (const message of batch) {
           try {
             await this.notifyListeners(message.eventType, message.data);
           } catch (error) {
-            console.error(`❌ 메시지 처리 오류 (${message.eventType}):`, error);
+            chatLogger.sse.error(`메시지 처리 오류 (${message.eventType})`, error);
           }
         }
 
@@ -340,10 +320,10 @@ class SseService {
         }
       }
     } catch (error) {
-      console.error('❌ 메시지 큐 처리 중 오류:', error);
+      chatLogger.sse.error('메시지 큐 처리 중 오류', error);
     } finally {
       this.isProcessingQueue = false;
-      console.log('✅ 메시지 큐 처리 완료');
+      chatLogger.sse.debug('메시지 큐 처리 완료');
     }
   }
 
@@ -408,7 +388,7 @@ class SseService {
     
     // 연결 상태 불일치 감지 (다중 연결 환경에서 더 신중하게)
     if (this.isConnected && this.eventSource?.readyState !== EventSource.OPEN) {
-      console.warn('⚠️ 연결 상태 불일치 감지 (다중 연결 환경):', {
+      chatLogger.sse.warn('연결 상태 불일치 감지 (다중 연결 환경)', {
         isConnected: this.isConnected,
         readyState: this.eventSource?.readyState,
         readyStateText: this.getReadyStateText(),
@@ -445,10 +425,10 @@ class SseService {
     
     this.heartbeatInterval = setInterval(() => {
       const status = this.getConnectionStatus();
-      console.log('💓 하트비트 체크 (다중세션 지원):', status);
+      chatLogger.sse.debug('하트비트 체크 (다중세션 지원)', status);
       
       if (!this.isEventSourceConnected()) {
-        console.log('💔 SSE 연결 끊어짐 감지, 재연결 시도 (백엔드 다중세션 지원으로 안정성 향상)');
+        chatLogger.sse.info('SSE 연결 끊어짐 감지, 재연결 시도');
         this.scheduleReconnect();
       }
     }, 8000); // 다중 연결에서는 더 여유롭게 8초마다 체크
@@ -459,7 +439,7 @@ class SseService {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
-      console.log('💓 하트비트 중지됨');
+      chatLogger.sse.debug('하트비트 중지됨');
     }
   }
 
@@ -656,11 +636,11 @@ class SseService {
     fetch('/api/sse/debug')
       .then(response => response.json())
       .then(backendStatus => {
-        console.log('🔍 백엔드 다중 세션 상태:', backendStatus);
+        chatLogger.sse.debug('백엔드 다중 세션 상태', backendStatus);
         diagnosis.backendMultiSession = backendStatus;
       })
       .catch(error => {
-        console.warn('⚠️ 백엔드 상태 확인 실패:', error);
+        chatLogger.sse.warn('백엔드 상태 확인 실패', error);
         diagnosis.backendMultiSession = { error: error.message };
       });
     
