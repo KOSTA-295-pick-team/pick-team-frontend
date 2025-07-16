@@ -16,6 +16,7 @@ export interface AuthContextType {
   loginWithCredentials: (email: string, password: string) => Promise<void>;
   logout: () => void;
   updateUserProfile: (updatedProfileData: Partial<User>) => void;
+  refreshProfile: () => Promise<void>;
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
@@ -142,12 +143,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   }, []);
 
   const updateUserProfile = useCallback((updatedProfileData: Partial<User>) => {
+    setCurrentUser(prevUser => {
+      if (!prevUser) return prevUser;
+      return {
+        ...prevUser,
+        ...updatedProfileData,
+      };
+    });
+  }, []); // currentUser 의존성 제거
+
+  const refreshProfile = useCallback(async () => {
     if (!currentUser) return;
     
-    setCurrentUser(prevUser => ({
-      ...prevUser!,
-      ...updatedProfileData,
-    }));
+    try {
+      const response = await userApi.getMyProfile();
+      if (response.success && response.data) {
+        setCurrentUser(response.data);
+      }
+    } catch (error: any) {
+      console.error("프로필 새로고침 실패:", error);
+      // 에러는 조용히 처리 (사용자에게 알리지 않음)
+    }
   }, [currentUser]);
 
   const register = useCallback(async (userData: {
@@ -310,6 +326,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     loginWithCredentials,
     logout,
     updateUserProfile,
+    refreshProfile,
     isAuthenticated: !!currentUser,
     loading,
     error,

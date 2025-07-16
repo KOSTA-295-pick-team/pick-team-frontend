@@ -102,7 +102,8 @@ class SseService {
 
       // SSE 연결 with timeout 옵션
       // 504 에러 대응을 위해 더 짧은 타임아웃으로 빠른 재연결
-      const sseUrl = '/api/sse/subscribe';
+      const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8081/api';
+      const sseUrl = `${API_BASE_URL}/sse/subscribe`;
       chatLogger.sse.info('SSE 연결 시도', { url: sseUrl });
 
       this.eventSource = new EventSource(sseUrl);

@@ -405,9 +405,9 @@ export const HomePage: React.FC = () => {
         size="md"
       >
         {selectedMember && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* 프로필 헤더 */}
-            <div className="text-center">
+            <div className="text-center pb-4 border-b border-neutral-200">
               <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-primary-light flex items-center justify-center overflow-hidden">
                 {selectedMember.profileImageUrl ? (
                   <img 
@@ -426,95 +426,97 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* 기본 정보 */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               {selectedMember.mbti && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">성격 유형 (MBTI)</h4>
-                  <span className="inline-block px-3 py-2 bg-primary-light text-primary rounded-lg font-medium">
-                    {selectedMember.mbti}
-                  </span>
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">성격 유형 (MBTI)</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <p className="text-sm text-neutral-700 ml-2">
+                      {selectedMember.mbti}
+                    </p>
+                  </div>
                 </div>
               )}
 
               {selectedMember.age && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">나이</h4>
-                  <p className="text-neutral-800">{selectedMember.age}세</p>
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">나이</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <p className="text-sm text-neutral-700 ml-2">{selectedMember.age}세</p>
+                  </div>
                 </div>
               )}
 
               {selectedMember.disposition && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">성향/특성</h4>
-                  <p className="text-neutral-800 leading-relaxed">{selectedMember.disposition}</p>
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">성향/특성</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <p className="text-sm text-neutral-700 leading-relaxed ml-2">{selectedMember.disposition}</p>
+                  </div>
                 </div>
               )}
 
               {selectedMember.introduction && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">자기소개</h4>
-                  <p className="text-neutral-800 leading-relaxed">{selectedMember.introduction}</p>
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">자기소개</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <p className="text-sm text-neutral-700 leading-relaxed ml-2">{selectedMember.introduction}</p>
+                  </div>
                 </div>
               )}
 
               {selectedMember.preferWorkstyle && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">선호하는 것들</h4>
-                  <p className="text-neutral-800 leading-relaxed">{selectedMember.preferWorkstyle}</p>
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">선호하는 것들</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <p className="text-sm text-neutral-700 leading-relaxed ml-2">{selectedMember.preferWorkstyle}</p>
+                  </div>
                 </div>
               )}
 
               {selectedMember.dislikeWorkstyle && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">비선호하는 것들</h4>
-                  <p className="text-neutral-800 leading-relaxed">{selectedMember.dislikeWorkstyle}</p>
-                </div>
-              )}
-
-              {selectedMember.preferWorkstyle && (
-                <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">선호하는 작업 스타일</h4>
-                  <p className="text-neutral-800 leading-relaxed">{selectedMember.preferWorkstyle}</p>
-                </div>
-              )}
-
-              {selectedMember.dislikeWorkstyle && (
-                <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">기피하는 작업 스타일</h4>
-                  <p className="text-neutral-800 leading-relaxed">{selectedMember.dislikeWorkstyle}</p>
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">비선호하는 것들</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <p className="text-sm text-neutral-700 leading-relaxed ml-2">{selectedMember.dislikeWorkstyle}</p>
+                  </div>
                 </div>
               )}
 
               {selectedMember.portfolio && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">포트폴리오</h4>
-                  {selectedMember.portfolio.startsWith('http') ? (
-                    <a 
-                      href={selectedMember.portfolio} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary hover:text-primary-dark underline break-all"
-                    >
-                      {selectedMember.portfolio}
-                    </a>
-                  ) : (
-                    <p className="text-neutral-800 leading-relaxed">{selectedMember.portfolio}</p>
-                  )}
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">포트폴리오</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    {selectedMember.portfolio.startsWith('http') ? (
+                      <a 
+                        href={selectedMember.portfolio} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:text-primary-dark underline break-all text-sm ml-2 block"
+                      >
+                        {selectedMember.portfolio}
+                      </a>
+                    ) : (
+                      <p className="text-sm text-neutral-700 leading-relaxed ml-2">{selectedMember.portfolio}</p>
+                    )}
+                  </div>
                 </div>
               )}
 
               {selectedMember.hashtags && selectedMember.hashtags.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium text-neutral-700 mb-2">관심 태그</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedMember.hashtags.map((tag, index) => (
-                      <span 
-                        key={index} 
-                        className="px-3 py-1 bg-neutral-100 text-neutral-700 text-sm rounded-full"
-                      >
-                        {tag}
-                      </span>
-                    ))}
+                  <h4 className="text-base font-semibold text-neutral-900 mb-2">관심 태그</h4>
+                  <div className="bg-neutral-50 p-3 rounded-md">
+                    <div className="flex flex-wrap gap-2 ml-2">
+                      {selectedMember.hashtags.map((tag, index) => (
+                        <span 
+                          key={index} 
+                          className="px-2 py-1 bg-white text-neutral-600 text-xs rounded-full border border-neutral-200"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

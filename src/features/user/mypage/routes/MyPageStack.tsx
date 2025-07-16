@@ -97,13 +97,14 @@ export const MyPage: React.FC = () => {
 };
 
 export const ProfileEditPage: React.FC = () => {
-  const { currentUser, updateUserProfile } = useAuth();
+  const { currentUser, updateUserProfile, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState<Partial<User>>({
     name: "",
     age: undefined,
     mbti: "",
+    disposition: "", // 성향/특성 필드 추가
     skills: [],
     bio: "",
     portfolioUrl: "",
@@ -125,9 +126,10 @@ export const ProfileEditPage: React.FC = () => {
         name: currentUser.name || "",
         age: currentUser.age || undefined,
         mbti: currentUser.mbti || "",
-        skills: currentUser.skills || [],
-        bio: currentUser.bio || "",
-        portfolioUrl: currentUser.portfolioUrl || "",
+        disposition: currentUser.disposition || "", // 성향/특성 초기값 설정
+        skills: currentUser.hashtags || [], // hashtags -> skills 매핑
+        bio: currentUser.introduction || "", // introduction -> bio 매핑
+        portfolioUrl: currentUser.portfolio || "", // portfolio -> portfolioUrl 매핑
         preferWorkstyle: currentUser.preferWorkstyle || "",
         dislikeWorkstyle: currentUser.dislikeWorkstyle || "",
       });
@@ -143,7 +145,7 @@ export const ProfileEditPage: React.FC = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [currentUser?.id, navigate]);
+  }, [currentUser, navigate]); // currentUser 전체를 의존성으로 설정
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -178,10 +180,6 @@ export const ProfileEditPage: React.FC = () => {
       const response = await userApi.uploadProfileImage(profileImageFile);
       const imageUrl = response.data.profileImageUrl;
 
-      await userApi.updateMyProfile({
-        ...formData,
-      });
-
       setProfileImagePreview(
         getProfileImageSrc(imageUrl, currentUser?.id || "", 150)
       );
@@ -191,6 +189,9 @@ export const ProfileEditPage: React.FC = () => {
         ...currentUser,
         profileImageUrl: imageUrl,
       });
+
+      // 최신 프로필 정보를 서버에서 다시 가져오기
+      await refreshProfile();
     } catch (error: any) {
       setImageError(error.message || "이미지 업로드 중 오류가 발생했습니다.");
     } finally {
@@ -205,8 +206,9 @@ export const ProfileEditPage: React.FC = () => {
     setImageError(null);
 
     try {
+      // 프로필 이미지를 null로 설정하여 삭제
       await userApi.updateMyProfile({
-        ...formData,
+        profileImageUrl: null,
       });
 
       updateUserProfile({ 
@@ -216,6 +218,9 @@ export const ProfileEditPage: React.FC = () => {
       setProfileImagePreview(
         getProfileImageSrc(null, currentUser?.id || "", 150)
       );
+
+      // 최신 프로필 정보를 서버에서 다시 가져오기
+      await refreshProfile();
     } catch (error: any) {
       setImageError(error.message || "이미지 삭제 중 오류가 발생했습니다.");
     } finally {
@@ -247,8 +252,25 @@ export const ProfileEditPage: React.FC = () => {
     setProfileError(null);
 
     try {
-      const response = await userApi.updateMyProfile(formData);
+      // 프론트엔드 필드명을 백엔드 필드명으로 변환
+      const profileUpdateData = {
+        name: formData.name,
+        age: formData.age,
+        mbti: formData.mbti,
+        disposition: formData.disposition, // 성향/특성 필드 추가
+        introduction: formData.bio, // bio -> introduction
+        portfolio: formData.portfolioUrl, // portfolioUrl -> portfolio
+        hashtags: formData.skills, // skills -> hashtags
+        preferWorkstyle: formData.preferWorkstyle,
+        dislikeWorkstyle: formData.dislikeWorkstyle,
+      };
+
+      const response = await userApi.updateMyProfile(profileUpdateData);
       updateUserProfile(response.data);
+      
+      // 최신 프로필 정보를 서버에서 다시 가져오기
+      await refreshProfile();
+      
       navigate("/my-page", { replace: true });
     } catch (error: any) {
       setProfileError(error.message || "프로필 수정 중 오류가 발생했습니다.");
@@ -359,6 +381,16 @@ export const ProfileEditPage: React.FC = () => {
                 onChange={handleChange}
                 placeholder="예: ENFP"
               />
+              <Input
+                label="성향/특성"
+                name="disposition"
+                value={formData.disposition || ""}
+                onChange={handleChange}
+                placeholder="예: 활발함, 신중함, 협력적"
+              />
+            </div>
+
+            <div className="grid md:grid-cols-1 gap-6">
               <Input
                 label="포트폴리오 링크"
                 name="portfolioUrl"
@@ -494,7 +526,13 @@ export const AccountSettingsPage: React.FC = () => {
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
-      setError(err.message || "비밀번호 변경에 실패했습니다.");
+      if (err.status === 400 && err.message?.includes('소셜 로그인')) {
+        setError("소셜 로그인 사용자는 비밀번호를 변경할 수 없습니다.");
+      } else if (err.status === 401) {
+        setError("현재 비밀번호가 올바르지 않습니다.");
+      } else {
+        setError(err.message || "비밀번호 변경에 실패했습니다.");
+      }
     } finally {
       setLoading(false);
     }
@@ -525,6 +563,14 @@ export const AccountSettingsPage: React.FC = () => {
                   <span className="text-sm text-gray-800">{currentUser.email}</span>
                 </div>
                 <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">로그인 방식:</span>
+                  <span className="text-sm text-gray-800">
+                    {currentUser.provider === 'LOCAL' ? '이메일 로그인' : 
+                     currentUser.provider === 'GOOGLE' ? '구글 로그인' :
+                     currentUser.provider === 'KAKAO' ? '카카오 로그인' : '알 수 없음'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-600">가입일:</span>
                   <span className="text-sm text-gray-800">
                     {currentUser.createdAt 
@@ -535,9 +581,11 @@ export const AccountSettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6 border border-gray-200 rounded-lg">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">비밀번호 변경</h3>
-              <form onSubmit={handlePasswordChange} className="space-y-4">
+            {/* 소셜 로그인 사용자는 비밀번호 변경 불가 */}
+            {currentUser.provider === 'LOCAL' && (
+              <div className="p-6 border border-gray-200 rounded-lg">
+                <h3 className="text-lg font-semibold text-gray-700 mb-4">비밀번호 변경</h3>
+                <form onSubmit={handlePasswordChange} className="space-y-4">
                 <Input
                   label="현재 비밀번호"
                   type="password"
@@ -592,6 +640,18 @@ export const AccountSettingsPage: React.FC = () => {
                 </div>
               </form>
             </div>
+            )}
+
+            {/* 소셜 로그인 사용자용 안내 메시지 */}
+            {currentUser.provider !== 'LOCAL' && (
+              <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">비밀번호 변경</h3>
+                <p className="text-sm text-gray-600">
+                  소셜 로그인({currentUser.provider === 'GOOGLE' ? '구글' : '카카오'})으로 가입하신 경우, 
+                  해당 플랫폼에서 비밀번호를 변경해주세요.
+                </p>
+              </div>
+            )}
           </div>
         </Card>
       </div>
