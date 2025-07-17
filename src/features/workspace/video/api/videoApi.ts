@@ -58,11 +58,12 @@ export const videoApi = {
     
     leaveVideoChannel: async (
         workspaceId: string,
-        channelId: string
+        channelId: string,
+        memberId: string
     ): Promise<string> => {
         return await apiRequest<string>(
-            `/workspaces/${workspaceId}/video-channels/${channelId}/leave`,
-            { method: 'POST' }
+            `/workspaces/${workspaceId}/video-channels/${channelId}/video-members/${memberId}`,
+            { method: 'DELETE' }
         );
     },
     

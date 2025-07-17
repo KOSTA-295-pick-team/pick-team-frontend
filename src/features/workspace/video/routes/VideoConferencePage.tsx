@@ -210,7 +210,7 @@ export const VideoConferencePage: React.FC = () => {
         try {
           const currentParticipant = participantsRef.current.find((participant) => participant.userId === currentUser!.id);
           if (currentParticipant) {
-            await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!);
+            await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!, currentParticipant.id);
             console.log("화상회의 방을 나갔습니다.");
           }
         } catch (error: any) {
@@ -262,78 +262,41 @@ export const VideoConferencePage: React.FC = () => {
   }
 
   const publishCameraTrack = async () => {
-    console.log("publishing camera track...");
-    console.log("Current state - isCameraOn:", isCameraOn, "localVideoTrack:", !!localVideoTrack, "screenTrack:", !!screenTrack);
-    
+        console.log ("publishing camera track...");
     if (checkExistsPublishing()) {
       alert("다른 누군가가 이미 방송 중입니다.");
       return;
     }
-    if (!room) {
-      console.error("Room is not available");
-      return;
-    }
-    if (localVideoTrack || screenTrack) {
-      console.log("이미 비디오 트랙이 활성화되어 있습니다.");
-      return;
-    }
+    if (!room) return;
+    if (localVideoTrack || screenTrack) return;
 
-    try {
-      const videoTrack = await createLocalVideoTrack();
-      const audioTrack = await createLocalAudioTrack();
-      
-      console.log("Created tracks - video:", !!videoTrack, "audio:", !!audioTrack);
-      
-      setLocalVideoTrack(videoTrack);
-      setLocalAudioTrack(audioTrack);
-      
-      await room.localParticipant.publishTrack(videoTrack);
-      await room.localParticipant.publishTrack(audioTrack);
-      
-      setIsCameraOn(true);
-      setIsMuted(false);
-      
-      console.log("Camera track published successfully - isCameraOn set to true");
-    } catch (error) {
-      console.error("Failed to publish camera track:", error);
-      alert("카메라 켜기에 실패했습니다.");
-    }
+    const videoTrack = await createLocalVideoTrack();
+    const audioTrack = await createLocalAudioTrack();
+    setLocalVideoTrack(videoTrack);
+    setLocalAudioTrack(audioTrack);
+    await room.localParticipant.publishTrack(videoTrack);
+    await room.localParticipant.publishTrack(audioTrack);
+    setIsCameraOn(true);
+    setIsMuted(false);
   };
 
   const unPublishCameraTrack = async () => {
-    console.log("Unpublishing camera track...");
-    console.log("Current state - isCameraOn:", isCameraOn, "localVideoTrack:", !!localVideoTrack, "localAudioTrack:", !!localAudioTrack);
-    
-    if (!room) {
-      console.error("Room is not available");
-      return;
-    }
-    
+    console.log ("Unpublishing camera track...");
+    if (!room) return;
     const videoTrack = localVideoTrack;
     const audioTrack = localAudioTrack;
-    
     if (videoTrack) {
-      try {
-        room.localParticipant.unpublishTrack(videoTrack);
-        videoTrack.stop();
-        
-        if (audioTrack) {
-          room.localParticipant.unpublishTrack(audioTrack);
-          audioTrack.stop();
-        }
-        
-        setIsCameraOn(false);
-        setIsMuted(true);
-        setLocalVideoTrack(null);
-        setLocalAudioTrack(null);
-        
-        console.log("Camera track unpublished successfully - isCameraOn set to false");
-      } catch (error) {
-        console.error("Failed to unpublish camera track:", error);
-        alert("카메라 끄기에 실패했습니다.");
+      room.localParticipant.unpublishTrack(videoTrack);
+      videoTrack.stop();
+      if (audioTrack) {
+        room.localParticipant.unpublishTrack(audioTrack);
+        audioTrack.stop();
       }
+      setIsCameraOn(false);
+      setIsMuted(true);
+      setLocalVideoTrack(null);
+      setLocalAudioTrack(null);
     } else {
-      console.log("No video track to unpublish");
       alert("현재 카메라 공유 중이 아닙니다.");
     }
   };
@@ -475,13 +438,9 @@ export const VideoConferencePage: React.FC = () => {
             }} variant={isMuted ? "danger" : "outline"} size="sm">
               {isMuted ? "음소거 해제" : "음소거"}
             </Button>
-            <Button onClick={async () => {
-              console.log("Camera button clicked - current isCameraOn:", isCameraOn);
-              if (!isCameraOn) {
-                await publishCameraTrack();
-              } else {
-                await unPublishCameraTrack();
-              }
+            <Button onClick={() => {
+              if (!isCameraOn) publishCameraTrack();
+              else unPublishCameraTrack();
             }} variant={isCameraOn ? "outline" : "danger"} size="sm">
               {isCameraOn ? "카메라 끄기" : "카메라 켜기"}
             </Button>
