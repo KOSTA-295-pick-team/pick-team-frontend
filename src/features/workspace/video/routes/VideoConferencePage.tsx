@@ -210,7 +210,7 @@ export const VideoConferencePage: React.FC = () => {
         try {
           const currentParticipant = participantsRef.current.find((participant) => participant.userId === currentUser!.id);
           if (currentParticipant) {
-            await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!, currentParticipant.id);
+            await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!);
             console.log("화상회의 방을 나갔습니다.");
           }
         } catch (error: any) {
