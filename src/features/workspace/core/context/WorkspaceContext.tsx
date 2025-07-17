@@ -1,13 +1,17 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { Workspace, TeamProject } from '@/types';
 import { workspaceApi } from '@/features/workspace/management/api/workspaceApi';
+import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { useAuth } from '@/features/user/auth/context/AuthContext';
 
 export interface WorkspaceContextType {
     workspaces: Workspace[];
     currentWorkspace: Workspace | null;
     currentTeamProject: any | null; // TeamProject -> any
+    teams: any[]; // 현재 워크스페이스의 팀 목록
     loadWorkspaces: () => Promise<void>;
+    loadTeams: () => Promise<void>;
+    addTeam: (team: any) => void;
     createWorkspace: (data: { name: string; iconUrl?: string; password?: string }) => Promise<Workspace>;
     joinWorkspace: (data: { inviteCode: string; password?: string }) => Promise<Workspace>;
     // joinWorkspaceById: 보안상 제거됨 - 초대 코드만 사용
@@ -25,6 +29,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
     const [currentTeamProject, setCurrentTeamProject] = useState<TeamProject | null>(null);
+    const [teams, setTeams] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [hasLoaded, setHasLoaded] = useState(false);
@@ -41,10 +46,18 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
             setWorkspaces([]);
             setCurrentWorkspace(null);
             setCurrentTeamProject(null);
+            setTeams([]);
             setLoading(false);
             setHasLoaded(false);
         }
     }, [currentUser, isAuthenticated, hasLoaded]); // hasLoaded 의존성 다시 추가
+
+    // 워크스페이스 변경 시 팀 목록 로드
+    useEffect(() => {
+        if (currentWorkspace) {
+            loadTeams();
+        }
+    }, [currentWorkspace]);
 
     const loadWorkspaces = async () => {
         if (hasLoaded) {
@@ -75,6 +88,25 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
         } finally {
             setLoading(false);
         }
+    };
+
+    const loadTeams = async () => {
+        if (!currentWorkspace) {
+            setTeams([]);
+            return;
+        }
+        
+        try {
+            const teamList = await teamApi.getTeams(currentWorkspace.id);
+            setTeams(teamList);
+        } catch (err: any) {
+            console.error('팀 목록 로드 실패:', err);
+            setTeams([]);
+        }
+    };
+
+    const addTeam = (team: any) => {
+        setTeams(prev => [...prev, team]);
     };
 
     const createWorkspace = async (data: { name: string; iconUrl?: string; password?: string }) => {
@@ -128,6 +160,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
         if (!workspaceId) {
             setCurrentWorkspace(null);
             setCurrentTeamProject(null); // 워크스페이스 변경 시 팀도 초기화
+            setTeams([]); // 팀 목록도 초기화
             return;
         }
         
@@ -145,6 +178,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
             }
             setCurrentWorkspace(workspace);
             setCurrentTeamProject(null); // 워크스페이스 변경 시 팀도 초기화
+            setTeams([]); // 팀 목록도 초기화
         }
     };
 
@@ -152,7 +186,10 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({
         workspaces,
         currentWorkspace,
         currentTeamProject,
+        teams,
         loadWorkspaces,
+        loadTeams,
+        addTeam,
         createWorkspace,
         joinWorkspace,
         // joinWorkspaceById: 보안상 제거됨

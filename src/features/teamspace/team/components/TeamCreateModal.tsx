@@ -52,9 +52,6 @@ const TeamCreateModal: React.FC<TeamCreateModalProps> = ({ isOpen, onClose, onTe
                 onTeamCreated(newTeam);
             }
             
-            // 전역 이벤트 발생 (사이드바 갱신용)
-            window.dispatchEvent(new CustomEvent('teamCreated', { detail: newTeam }));
-            
             if (setCurrentTeamProject) {
                 setCurrentTeamProject(newTeam);
             }
