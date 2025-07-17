@@ -267,42 +267,6 @@ export const TeamProjectSidebar: React.FC = () => {
         try {
             console.log(`화상회의 방 삭제 시도: ${channelId} - ${channelName}`);
             
-            // 현재 페이지가 삭제하려는 방인지 확인
-            const currentPath = location.pathname;
-            const isCurrentRoom = currentPath.includes('/video/live') && 
-                                 new URLSearchParams(location.search).get('roomId') === channelId;
-            
-            if (isCurrentRoom) {
-                // 현재 방에 있다면 먼저 방을 나가고 홈으로 이동
-                console.log("현재 방을 삭제하려고 함. 홈으로 이동합니다.");
-                navigate(`/ws/${currentWorkspace.id}`);
-                // 잠시 대기 후 삭제
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-            
-            // 참여자가 있는지 확인하고 강제로 나가게 하기
-            try {
-                const participants = await videoApi.getChannelParticipants(currentWorkspace.id.toString(), channelId);
-                console.log(`채널 ${channelId}의 참여자 수: ${participants.length}`);
-                
-                if (participants.length > 0) {
-                    console.log("참여자가 있는 방을 삭제하려고 함. 모든 참여자를 강제로 나가게 합니다.");
-                    // 모든 참여자를 강제로 나가게 함
-                    for (const participant of participants) {
-                        try {
-                            await videoApi.leaveChannel(currentWorkspace.id.toString(), channelId, participant.id.toString());
-                            console.log(`참여자 ${participant.name} 강제 퇴장 완료`);
-                        } catch (leaveError) {
-                            console.warn(`참여자 ${participant.name} 강제 퇴장 실패:`, leaveError);
-                        }
-                    }
-                    // 모든 참여자 제거 후 잠시 대기
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            } catch (participantError) {
-                console.warn("참여자 목록 조회 실패:", participantError);
-            }
-            
             await videoApi.deleteVideoChannel(currentWorkspace.id.toString(), channelId);
             console.log(`화상회의 방 삭제 성공: ${channelId}`);
             
