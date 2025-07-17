@@ -406,9 +406,9 @@ export const VideoConferencePage: React.FC = () => {
   if (!roomName) {
     return <div className="p-4 text-center">회의실 정보를 불러오는 중이거나, 유효한 회의실이 아닙니다...</div>;
   }
-  console.log("isCameraOn :"+isCameraOn);
+ 
   return (
-    <Card title={`📹 화상 회의: ${roomName}`} className="h-full flex flex-col">
+     <Card title={`📹 화상 회의: ${roomName}`} className="h-full flex flex-col ml-64">
       <div className="flex flex-grow min-h-[calc(100vh-16rem)]">
         <div className={`flex-grow ${showChat ? 'md:w-3/4' : 'w-full'} transition-all duration-300`}>
           <div className="relative min-h-[300px] sm:min-h-[400px] bg-neutral-800 p-3 rounded-md">
