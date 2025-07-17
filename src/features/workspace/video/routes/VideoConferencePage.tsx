@@ -52,7 +52,7 @@ const VideoTrackView: React.FC<{
         autoPlay
         playsInline
         muted={track?.isLocal ?? false}
-        style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '0.5rem' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '0.5rem' }}
       />
       {(identity || metaData) && (
         <div
@@ -209,7 +209,7 @@ export const VideoConferencePage: React.FC = () => {
     return () => {
       (async () => {
         try {
-          const currentParticipant = participantsRef.current.find((participant) => ''+participant.userId === currentUser!.id);
+          const currentParticipant = participantsRef.current.find((participant) => participant.userId == parseInt(currentUser!.id));
           if (currentParticipant) {
             await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!, currentParticipant.id);
             console.log("화상회의 방을 나갔습니다.");
@@ -406,12 +406,12 @@ export const VideoConferencePage: React.FC = () => {
   if (!roomName) {
     return <div className="p-4 text-center">회의실 정보를 불러오는 중이거나, 유효한 회의실이 아닙니다...</div>;
   }
-  console.log("isCameraOn :"+isCameraOn);
+ 
   return (
-    <Card title={`📹 화상 회의: ${roomName}`} className="h-full flex flex-col">
+     <Card title={`📹 화상 회의: ${roomName}`} className="h-full flex flex-col ml-64">
       <div className="flex flex-grow min-h-[calc(100vh-16rem)]">
         <div className={`flex-grow ${showChat ? 'md:w-3/4' : 'w-full'} transition-all duration-300`}>
-          <div className="relative min-h-[300px] sm:min-h-[400px] bg-neutral-800 p-3 rounded-md">
+          <div className="relative h-full bg-neutral-800 p-0 rounded-md flex items-center justify-center">
             {remoteVideoTrack && <VideoTrackView {...remoteVideoTrack} />}
             {!remoteVideoTrack && screenTrack && <VideoTrackView track={screenTrack} identity='내 화면 공유' />}
             {!remoteVideoTrack && localVideoTrack && <VideoTrackView track={localVideoTrack} identity='내 카메라 공유' />}
@@ -421,7 +421,7 @@ export const VideoConferencePage: React.FC = () => {
                   <img
                     src={member.profileImageUrl || `https://picsum.photos/seed/${member.id}/60/60`}
                     alt={member.name}
-                    className={`w-8 h-8 rounded-full mr-2 ${!isCameraOn && ''+member.userId === currentUser!.id ? 'opacity-50' : ''}`}
+                    className={`w-8 h-8 rounded-full mr-2 ${!isCameraOn && member.userId == parseInt(currentUser.id) ? 'opacity-50' : ''}`}
                   />
                   <div className="flex-1 truncate">
                     <p>{member.email}</p>
