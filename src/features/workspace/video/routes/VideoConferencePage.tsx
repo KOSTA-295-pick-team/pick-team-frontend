@@ -209,7 +209,7 @@ export const VideoConferencePage: React.FC = () => {
     return () => {
       (async () => {
         try {
-          const currentParticipant = participantsRef.current.find((participant) => ''+participant.userId === currentUser!.id);
+          const currentParticipant = participantsRef.current.find((participant) => participant.userId == parseInt(currentUser!.id));
           if (currentParticipant) {
             await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!, currentParticipant.id);
             console.log("화상회의 방을 나갔습니다.");
@@ -421,7 +421,7 @@ export const VideoConferencePage: React.FC = () => {
                   <img
                     src={member.profileImageUrl || `https://picsum.photos/seed/${member.id}/60/60`}
                     alt={member.name}
-                    className={`w-8 h-8 rounded-full mr-2 ${!isCameraOn && ''+member.userId === currentUser!.id ? 'opacity-50' : ''}`}
+                    className={`w-8 h-8 rounded-full mr-2 ${!isCameraOn && member.userId == parseInt(currentUser.id) ? 'opacity-50' : ''}`}
                   />
                   <div className="flex-1 truncate">
                     <p>{member.email}</p>
