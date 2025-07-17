@@ -4,6 +4,8 @@ import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { chatApi, ChatRoomResponse } from '@/features/workspace/chat/api/chatApi';
+import { videoApi } from '@/features/workspace/video/api/videoApi';
+import { VideoChannel } from '@/features/workspace/video/types/video';
 import { Team } from '@/types';
 import { chatLogger } from '@/features/workspace/chat/utils/chatLogger';
 import { 
@@ -13,25 +15,13 @@ import {
     LockClosedIcon,
     UserIcon,
     ChatBubbleBottomCenterTextIcon,
-    UsersIcon
+    UsersIcon,
+    TrashIcon
 } from '@/assets/icons';
 import TeamCreateModal from '@/features/teamspace/team/components/TeamCreateModal';
 import { NewChatModal } from '@/features/workspace/chat/components/NewChatModal';
 import WorkspaceSettingsModal from '@/features/workspace/management/components/WorkspaceSettingsModal';
-
-// 임시 화상회의 모달 컴포넌트 - 실제 구현 시 수정 필요
-const NewVideoConferenceModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg">
-                <h2 className="text-lg font-bold mb-4">새 화상회의</h2>
-                <p className="mb-4">새 화상회의 모달이 구현되지 않았습니다.</p>
-                <button onClick={onClose} className="bg-gray-500 text-white px-4 py-2 rounded">닫기</button>
-            </div>
-        </div>
-    );
-};
+import NewVideoConferenceModal from '@/features/workspace/video/components/NewVideoConferenceModal';
 
 export const TeamProjectSidebar: React.FC = () => {
     const { currentWorkspace } = useWorkspace();
@@ -43,6 +33,7 @@ export const TeamProjectSidebar: React.FC = () => {
     const [teamProjects, setTeamProjects] = useState<Team[]>([]);
     const [chatRooms, setChatRooms] = useState<ChatRoomResponse[]>([]);
     const [chatRoomMembers, setChatRoomMembers] = useState<{[roomId: number]: any[]}>({});
+    const [videoChannels, setVideoChannels] = useState<VideoChannel[]>([]);
     const [isTeamCreateModalOpen, setIsTeamCreateModalOpen] = useState(false);
     const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
     const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
@@ -60,6 +51,28 @@ export const TeamProjectSidebar: React.FC = () => {
                     setTeamProjects([]);
                 });
         }
+    }, [currentWorkspace]);
+
+    // 화상회의 목록 로드
+    useEffect(() => {
+        const loadVideoChannels = async () => {
+            if (!currentWorkspace) return;
+            
+            try {
+                const channels = await videoApi.getVideoChannels(currentWorkspace.id.toString());
+                setVideoChannels(channels);
+            } catch (error) {
+                chatLogger.ui.error("화상회의 목록을 불러오는데 실패했습니다:", error);
+                setVideoChannels([]);
+            }
+        };
+        
+        loadVideoChannels();
+        
+        // 5초마다 화상회의 목록을 새로고침
+        const interval = setInterval(loadVideoChannels, 5000);
+        
+        return () => clearInterval(interval);
     }, [currentWorkspace]);
 
     // 채팅방 목록 로드
@@ -231,8 +244,94 @@ export const TeamProjectSidebar: React.FC = () => {
         return `그룹 채팅 ${room.id}`;
     };
 
-    // TODO: Video 컨텍스트 구현 후 아래 임시 데이터 제거 필요
-    const videoRooms: any[] = [];
+    // 화상회의 생성 후 목록 새로고침
+    const handleVideoConferenceCreated = () => {
+        if (currentWorkspace) {
+            videoApi.getVideoChannels(currentWorkspace.id.toString())
+                .then(channels => {
+                    setVideoChannels(channels);
+                })
+                .catch(error => {
+                    chatLogger.ui.error("화상회의 목록 새로고침 실패:", error);
+                });
+        }
+    };
+
+    // 화상회의 방 삭제 핸들러
+    const handleDeleteVideoChannel = async (channelId: string, channelName: string) => {
+        if (!currentWorkspace) return;
+        
+        const confirmDelete = window.confirm(`"${channelName}" 화상회의 방을 삭제하시겠습니까?`);
+        if (!confirmDelete) return;
+
+        try {
+            console.log(`화상회의 방 삭제 시도: ${channelId} - ${channelName}`);
+            
+            // 현재 페이지가 삭제하려는 방인지 확인
+            const currentPath = location.pathname;
+            const isCurrentRoom = currentPath.includes('/video/live') && 
+                                 new URLSearchParams(location.search).get('roomId') === channelId;
+            
+            if (isCurrentRoom) {
+                // 현재 방에 있다면 먼저 방을 나가고 홈으로 이동
+                console.log("현재 방을 삭제하려고 함. 홈으로 이동합니다.");
+                navigate(`/ws/${currentWorkspace.id}`);
+                // 잠시 대기 후 삭제
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            // 참여자가 있는지 확인하고 강제로 나가게 하기
+            try {
+                const participants = await videoApi.getChannelParticipants(currentWorkspace.id.toString(), channelId);
+                console.log(`채널 ${channelId}의 참여자 수: ${participants.length}`);
+                
+                if (participants.length > 0) {
+                    console.log("참여자가 있는 방을 삭제하려고 함. 모든 참여자를 강제로 나가게 합니다.");
+                    // 모든 참여자를 강제로 나가게 함
+                    for (const participant of participants) {
+                        try {
+                            await videoApi.leaveChannel(currentWorkspace.id.toString(), channelId, participant.id.toString());
+                            console.log(`참여자 ${participant.name} 강제 퇴장 완료`);
+                        } catch (leaveError) {
+                            console.warn(`참여자 ${participant.name} 강제 퇴장 실패:`, leaveError);
+                        }
+                    }
+                    // 모든 참여자 제거 후 잠시 대기
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            } catch (participantError) {
+                console.warn("참여자 목록 조회 실패:", participantError);
+            }
+            
+            await videoApi.deleteVideoChannel(currentWorkspace.id.toString(), channelId);
+            console.log(`화상회의 방 삭제 성공: ${channelId}`);
+            
+        } catch (error: any) {
+            console.error("화상회의 방 삭제 실패:", error);
+            chatLogger.ui.error("화상회의 방 삭제 실패:", error);
+            
+            // 더 구체적인 에러 메시지 표시
+            let errorMessage = "화상회의 방 삭제에 실패했습니다.";
+            if (error.response?.data?.detail) {
+                errorMessage += `\n오류: ${error.response.data.detail}`;
+            } else if (error.message) {
+                errorMessage += `\n오류: ${error.message}`;
+            }
+            alert(errorMessage);
+        }
+        
+        // 성공/실패 관계없이 목록 새로고침 (강제)
+        try {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+            const updatedChannels = await videoApi.getVideoChannels(currentWorkspace.id.toString());
+            setVideoChannels(updatedChannels);
+            console.log(`목록 새로고침 완료. 현재 방 수: ${updatedChannels.length}`);
+        } catch (refreshError) {
+            console.error("목록 새로고침 실패:", refreshError);
+            // 새로고침 실패 시 로컬에서 제거
+            setVideoChannels(prev => prev.filter(ch => ch.id !== channelId));
+        }
+    };
 
 
   return (
@@ -323,15 +422,27 @@ export const TeamProjectSidebar: React.FC = () => {
                         </button>
                     </h3>
                      <ul>
-        {videoRooms.map(room => (
-                            <li key={room.id}>
-                                <Link 
-                                    to={`/ws/${workspaceId}/video/${room.id}`}
-                                    className={`flex items-center space-x-2 p-2 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600 ${isFeatureActive(`/video/${room.id}`) ? 'bg-neutral-200 dark:bg-neutral-600 font-semibold' : ''}`}
-        >
-                                    <VideoCameraIcon className="h-4 w-4 text-neutral-500" />
-                                    <span className="truncate">{room.name}</span>
-                                </Link>
+                        {videoChannels.map(channel => (
+                            <li key={channel.id} className="group">
+                                <div className="flex items-center justify-between p-2 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600">
+                                    <Link 
+                                        to={`/ws/${workspaceId}/video/live?roomId=${channel.id}&roomName=${encodeURIComponent(channel.name)}`}
+                                        className={`flex items-center space-x-2 flex-1 ${isFeatureActive(`/video/live`) ? 'bg-neutral-200 dark:bg-neutral-600 font-semibold' : ''}`}
+                                    >
+                                        <VideoCameraIcon className="h-4 w-4 text-neutral-500" />
+                                        <span className="truncate">{channel.name}</span>
+                                    </Link>
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            handleDeleteVideoChannel(channel.id, channel.name);
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity"
+                                        title="화상회의 방 삭제"
+                                    >
+                                        <TrashIcon className="h-4 w-4" />
+                                    </button>
+                                </div>
                             </li>
                         ))}
                     </ul>
@@ -352,6 +463,7 @@ export const TeamProjectSidebar: React.FC = () => {
         <NewVideoConferenceModal
             isOpen={isNewVideoConferenceModalOpen}
             onClose={() => setIsNewVideoConferenceModalOpen(false)}
+            onVideoConferenceCreated={handleVideoConferenceCreated}
         />
         <WorkspaceSettingsModal
             isOpen={isWorkspaceSettingsModalOpen}

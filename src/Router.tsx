@@ -28,7 +28,7 @@ const Router: React.FC = () => {
                 <Route path="ws/:workspaceId" element={<HomePage />} />
                 <Route path="ws/:workspaceId/team/:teamId" element={<TeamSpacePage />} />
                 <Route path="ws/:workspaceId/chat/:chatId" element={<ChatPage />} />
-                <Route path="ws/:workspaceId/video/:roomId" element={<VideoConferencePage />} />
+                <Route path="ws/:workspaceId/video/live" element={<VideoConferencePage />} />
                 <Route path="ws/:workspaceId/team-formation" element={<TeamFormationHubPage />} />
 
                 <Route path="my-page" element={<MyPage />} />
