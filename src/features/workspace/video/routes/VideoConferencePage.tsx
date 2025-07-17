@@ -52,7 +52,7 @@ const VideoTrackView: React.FC<{
         autoPlay
         playsInline
         muted={track?.isLocal ?? false}
-        style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '0.5rem' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '0.5rem' }}
       />
       {(identity || metaData) && (
         <div
@@ -411,7 +411,7 @@ export const VideoConferencePage: React.FC = () => {
      <Card title={`📹 화상 회의: ${roomName}`} className="h-full flex flex-col ml-64">
       <div className="flex flex-grow min-h-[calc(100vh-16rem)]">
         <div className={`flex-grow ${showChat ? 'md:w-3/4' : 'w-full'} transition-all duration-300`}>
-          <div className="relative min-h-[300px] sm:min-h-[400px] bg-neutral-800 p-3 rounded-md">
+          <div className="relative h-full bg-neutral-800 p-0 rounded-md flex items-center justify-center">
             {remoteVideoTrack && <VideoTrackView {...remoteVideoTrack} />}
             {!remoteVideoTrack && screenTrack && <VideoTrackView track={screenTrack} identity='내 화면 공유' />}
             {!remoteVideoTrack && localVideoTrack && <VideoTrackView track={localVideoTrack} identity='내 카메라 공유' />}
