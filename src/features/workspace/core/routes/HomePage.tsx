@@ -9,7 +9,6 @@ import {
 } from '@/components/ui';
 import { User, Workspace } from '@/types';
 import { workspaceApi } from '@/features/workspace/management/api/workspaceApi';
-import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { UserIcon, UsersIcon } from '@/assets/icons';
 import TeamActionModal from '@/features/teamspace/team/components/TeamActionModal';
 import { TeamProjectSidebar } from '@/features/teamspace/core/components/TeamProjectSidebar';
@@ -17,7 +16,15 @@ import { getProfileImageSrc, handleImageError } from '@/lib/imageUtils';
 
 export const HomePage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { currentWorkspace, setCurrentWorkspaceById, setCurrentTeamProject, workspaces, loadWorkspaces } = useWorkspace();
+  const { 
+    currentWorkspace, 
+    setCurrentWorkspaceById, 
+    setCurrentTeamProject, 
+    workspaces, 
+    loadWorkspaces, 
+    teams, 
+    addTeam 
+  } = useWorkspace();
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
 
@@ -30,11 +37,6 @@ export const HomePage: React.FC = () => {
   // 선택된 멤버 상세 정보 상태
   const [selectedMember, setSelectedMember] = useState<User | null>(null);
   const [isMemberDetailModalOpen, setIsMemberDetailModalOpen] = useState(false);
-
-  // 팀 목록 관련 상태
-  const [teams, setTeams] = useState<any[]>([]);
-  const [isLoadingTeams, setIsLoadingTeams] = useState(false);
-  const [teamsError, setTeamsError] = useState<string | null>(null);
 
   // 팀 액션 모달 상태
   const [isTeamActionModalOpen, setIsTeamActionModalOpen] = useState(false);
@@ -79,23 +81,23 @@ export const HomePage: React.FC = () => {
     setIsMemberDetailModalOpen(true);
   };
 
-  // 워크스페이스의 팀 목록 로드
-  const loadTeams = async () => {
-    if (!currentWorkspace) return;
-    
-    setIsLoadingTeams(true);
-    setTeamsError(null);
-    
-    try {
-      const teamList = await teamApi.getTeams(currentWorkspace.id);
-      setTeams(teamList);
-    } catch (error: any) {
-      console.error('팀 목록 로드 실패:', error);
-      setTeamsError(error.message || '팀 목록을 불러오는데 실패했습니다.');
-    } finally {
-      setIsLoadingTeams(false);
-    }
-  };
+  // 워크스페이스의 팀 목록 로드 - 더 이상 필요하지 않음 (워크스페이스 컨텍스트에서 자동으로 처리)
+  // const loadTeams = async () => {
+  //   if (!currentWorkspace) return;
+  //   
+  //   setIsLoadingTeams(true);
+  //   setTeamsError(null);
+  //   
+  //   try {
+  //     const teamList = await teamApi.getTeams(currentWorkspace.id);
+  //     setTeams(teamList);
+  //   } catch (error: any) {
+  //     console.error('팀 목록 로드 실패:', error);
+  //     setTeamsError(error.message || '팀 목록을 불러오는데 실패했습니다.');
+  //   } finally {
+  //     setIsLoadingTeams(false);
+  //   }
+  // };
 
   // 팀 액션 모달 열기
   const handleOpenTeamActionModal = () => {
@@ -104,7 +106,7 @@ export const HomePage: React.FC = () => {
 
   // 팀 생성 완료 후 처리
   const handleTeamCreated = (newTeam: any) => {
-    setTeams(prev => [...prev, newTeam]);
+    addTeam(newTeam);
     setIsTeamActionModalOpen(false);
   };
 
@@ -187,23 +189,23 @@ export const HomePage: React.FC = () => {
       setMembersError(null);
       
       loadMembersPreview();
-      loadTeams();
+      // loadTeams(); // 더 이상 필요하지 않음 - 워크스페이스 컨텍스트에서 자동으로 처리
     }
   }, [currentWorkspace]);
 
-  // 팀 생성 이벤트 리스닝
-  useEffect(() => {
-    const handleTeamCreated = (event: CustomEvent) => {
-      const newTeam = event.detail;
-      setTeams(prev => [...prev, newTeam]);
-    };
+  // 팀 생성 이벤트 리스닝 - 중복 방지를 위해 제거
+  // useEffect(() => {
+  //   const handleTeamCreated = (event: CustomEvent) => {
+  //     const newTeam = event.detail;
+  //     setTeams(prev => [...prev, newTeam]);
+  //   };
 
-    window.addEventListener('teamCreated', handleTeamCreated as EventListener);
+  //   window.addEventListener('teamCreated', handleTeamCreated as EventListener);
     
-    return () => {
-      window.removeEventListener('teamCreated', handleTeamCreated as EventListener);
-    };
-  }, []);
+  //   return () => {
+  //     window.removeEventListener('teamCreated', handleTeamCreated as EventListener);
+  //   };
+  // }, []);
 
   if (!currentUser || !currentWorkspace) {
     // This should ideally be handled by ProtectedRoute and App.tsx's NavigateToInitialView
@@ -211,7 +213,7 @@ export const HomePage: React.FC = () => {
     return <div className="p-4">워크스페이스 정보를 불러오는 중...</div>;
   }
   
-  // 실제 팀 프로젝트는 API에서 가져옴
+  // 실제 팀 프로젝트는 워크스페이스 컨텍스트에서 가져옴
   const teamsForCurrentWorkspace = teams;
 
 
@@ -227,11 +229,7 @@ export const HomePage: React.FC = () => {
 
       {/* My Teams Section */}
       <Card title="내 팀 목록">
-        {isLoadingTeams ? (
-          <div className="py-8 text-center text-neutral-500">팀 목록을 불러오는 중...</div>
-        ) : teamsError ? (
-          <div className="py-8 text-center text-red-500">{teamsError}</div>
-        ) : teamsForCurrentWorkspace.length > 0 ? (
+        {teamsForCurrentWorkspace.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {teamsForCurrentWorkspace.map(team => (
               <Card key={team.id} className="bg-white hover:shadow-xl transition-shadow flex flex-col justify-between">

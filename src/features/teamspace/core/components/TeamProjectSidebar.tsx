@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
-import { teamApi } from '@/features/teamspace/team/api/teamApi';
 import { chatApi, ChatRoomResponse } from '@/features/workspace/chat/api/chatApi';
 import { videoApi } from '@/features/workspace/video/api/videoApi';
 import { VideoChannel } from '@/features/workspace/video/types/video';
@@ -24,13 +23,12 @@ import WorkspaceSettingsModal from '@/features/workspace/management/components/W
 import NewVideoConferenceModal from '@/features/workspace/video/components/NewVideoConferenceModal';
 
 export const TeamProjectSidebar: React.FC = () => {
-    const { currentWorkspace } = useWorkspace();
+    const { currentWorkspace, teams, addTeam } = useWorkspace();
     const { currentUser } = useAuth();
     const navigate = useNavigate();
     const { workspaceId, teamId } = useParams<{ workspaceId: string; teamId: string; }>();
     const location = useLocation();
     
-    const [teamProjects, setTeamProjects] = useState<Team[]>([]);
     const [chatRooms, setChatRooms] = useState<ChatRoomResponse[]>([]);
     const [chatRoomMembers, setChatRoomMembers] = useState<{[roomId: number]: any[]}>({});
     const [videoChannels, setVideoChannels] = useState<VideoChannel[]>([]);
@@ -39,19 +37,19 @@ export const TeamProjectSidebar: React.FC = () => {
     const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
     const [isWorkspaceSettingsModalOpen, setIsWorkspaceSettingsModalOpen] = useState(false);
 
-    // 팀 목록 로드
-    useEffect(() => {
-        if (currentWorkspace) {
-            teamApi.getTeams(currentWorkspace.id.toString())
-                .then(teams => {
-                    setTeamProjects(teams);
-                })
-                .catch(error => {
-                    chatLogger.ui.error("팀 목록을 불러오는데 실패했습니다:", error);
-                    setTeamProjects([]);
-                });
-        }
-    }, [currentWorkspace]);
+    // 팀 목록은 더 이상 로컬에서 로드하지 않음 - 워크스페이스 컨텍스트에서 자동으로 관리
+    // useEffect(() => {
+    //     if (currentWorkspace) {
+    //         teamApi.getTeams(currentWorkspace.id.toString())
+    //             .then(teams => {
+    //                 setTeamProjects(teams);
+    //             })
+    //             .catch(error => {
+    //                 chatLogger.ui.error("팀 목록을 불러오는데 실패했습니다:", error);
+    //                 setTeamProjects([]);
+    //             });
+    //     }
+    // }, [currentWorkspace]);
 
     // 화상회의 목록 로드
     useEffect(() => {
@@ -125,7 +123,8 @@ export const TeamProjectSidebar: React.FC = () => {
     }, [currentWorkspace, currentUser]);
 
     const handleTeamCreated = (newTeam: Team) => {
-        setTeamProjects(prev => [...prev, newTeam]);
+        addTeam(newTeam);
+        setIsTeamCreateModalOpen(false);
         if (currentWorkspace) {
             navigate(`/ws/${currentWorkspace.id}/team/${newTeam.id}`);
         }
@@ -353,7 +352,7 @@ export const TeamProjectSidebar: React.FC = () => {
         </button>
                     </h3>
                     <ul>
-                        {teamProjects.map(team => (
+                        {teams.map(team => (
                             <li key={team.id}>
                                 <Link 
                                     to={`/ws/${workspaceId}/team/${team.id}`} 
