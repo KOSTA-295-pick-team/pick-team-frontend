@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { workspaceApi } from '../../../workspace/management/api/workspaceApi';
+import { Workspace } from '../../../workspace/types/workspace';
 import { useWorkspace } from '@/features/workspace/core/hooks/useWorkspace';
 import { useAuth } from '@/features/user/auth/hooks/useAuth';
 import { chatApi, ChatRoomResponse } from '@/features/workspace/chat/api/chatApi';
@@ -36,6 +38,8 @@ export const TeamProjectSidebar: React.FC = () => {
     const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
     const [isNewVideoConferenceModalOpen, setIsNewVideoConferenceModalOpen] = useState(false);
     const [isWorkspaceSettingsModalOpen, setIsWorkspaceSettingsModalOpen] = useState(false);
+    const [canDeleteRoom,setCanDeleteRoom] = useState<boolean>(false);
+
 
     // 팀 목록은 더 이상 로컬에서 로드하지 않음 - 워크스페이스 컨텍스트에서 자동으로 관리
     // useEffect(() => {
@@ -121,6 +125,17 @@ export const TeamProjectSidebar: React.FC = () => {
 
         loadChatRooms();
     }, [currentWorkspace, currentUser]);
+
+
+    useEffect(()=>{
+        (async()=>{
+        const  workspace:Workspace = await workspaceApi.getWorkspaceDetails(currentWorkspace?.id!);
+            if(workspace.owner.id === parseInt(currentUser?.id!)){
+                setCanDeleteRoom(true); 
+            }
+        })();
+    },[currentWorkspace, currentUser]);
+
 
     const handleTeamCreated = (newTeam: Team) => {
         addTeam(newTeam);
@@ -395,7 +410,7 @@ export const TeamProjectSidebar: React.FC = () => {
                                         <VideoCameraIcon className="h-4 w-4 text-neutral-500" />
                                         <span className="truncate">{channel.name}</span>
                                     </Link>
-                                    <button
+                                    {canDeleteRoom && <button
                                         onClick={(e) => {
                                             e.preventDefault();
                                             handleDeleteVideoChannel(channel.id, channel.name);
@@ -404,7 +419,7 @@ export const TeamProjectSidebar: React.FC = () => {
                                         title="화상회의 방 삭제"
                                     >
                                         <TrashIcon className="h-4 w-4" />
-                                    </button>
+                                    </button>}
                                 </div>
                             </li>
                         ))}
