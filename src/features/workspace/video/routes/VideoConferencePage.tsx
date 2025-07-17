@@ -130,7 +130,7 @@ export const VideoConferencePage: React.FC = () => {
         }
 
         // 현재 사용자가 이미 참여했는지 확인
-        const isAlreadyJoined = participants.some(p => p.userId === currentUser!.id);
+        const isAlreadyJoined = participants.some(p => ''+p.userId === currentUser!.id);
         
         if (!isAlreadyJoined) {
           // 아직 참여하지 않은 경우에만 참여 API 호출
@@ -146,7 +146,8 @@ export const VideoConferencePage: React.FC = () => {
         setRoom(room);
         roomRef.current = room;
 
-        const livekitUrl = 'ws://localhost:7880';
+
+        const livekitUrl = (import.meta as any).env?.VITE_LIVEKIT_URL;
         const liveKitToken = await getToken();
 
         await room.connect(livekitUrl, liveKitToken);
@@ -163,7 +164,7 @@ export const VideoConferencePage: React.FC = () => {
           }
         });
 
-        const wsUrl = `ws://localhost:8081/ws?token=${localStorage.getItem("auth_token")}`;
+        const wsUrl = `${(import.meta as any).env?.VITE_API_URL}/ws?token=${localStorage.getItem("auth_token")}`;
         const stompClient = new Client({ brokerURL: wsUrl, reconnectDelay: 5000, debug: (str) => console.log(str) });
 
         stompClient.onConnect = () => {
@@ -208,7 +209,7 @@ export const VideoConferencePage: React.FC = () => {
     return () => {
       (async () => {
         try {
-          const currentParticipant = participantsRef.current.find((participant) => participant.userId === currentUser!.id);
+          const currentParticipant = participantsRef.current.find((participant) => ''+participant.userId === currentUser!.id);
           if (currentParticipant) {
             await videoApi.leaveVideoChannel(workspaceId!, IdFromQuery!, currentParticipant.id);
             console.log("화상회의 방을 나갔습니다.");
@@ -306,7 +307,7 @@ export const VideoConferencePage: React.FC = () => {
       alert("다른 누군가가 이미 방송 중입니다.");
       return;
     }
-    if (!room) return;
+    if (!room) return
     if (screenTrack || localVideoTrack) return;
 
     const [newScreenTrack, newAudioTrack] = await createScreenShareTrack();
@@ -405,7 +406,7 @@ export const VideoConferencePage: React.FC = () => {
   if (!roomName) {
     return <div className="p-4 text-center">회의실 정보를 불러오는 중이거나, 유효한 회의실이 아닙니다...</div>;
   }
-
+  console.log("isCameraOn :"+isCameraOn);
   return (
     <Card title={`📹 화상 회의: ${roomName}`} className="h-full flex flex-col">
       <div className="flex flex-grow min-h-[calc(100vh-16rem)]">
@@ -420,11 +421,11 @@ export const VideoConferencePage: React.FC = () => {
                   <img
                     src={member.profileImageUrl || `https://picsum.photos/seed/${member.id}/60/60`}
                     alt={member.name}
-                    className={`w-8 h-8 rounded-full mr-2 ${!isCameraOn && member.userId === currentUser!.id ? 'opacity-50' : ''}`}
+                    className={`w-8 h-8 rounded-full mr-2 ${!isCameraOn && ''+member.userId === currentUser!.id ? 'opacity-50' : ''}`}
                   />
                   <div className="flex-1 truncate">
                     <p>{member.email}</p>
-                    <p>{member.name}{member.userId === currentUser!.id && '(나)'}</p>
+                    <p>{member.name}{member.userId == parseInt(currentUser.id) && '(나)'}</p>
                   </div>
                 </div>
               ))}
