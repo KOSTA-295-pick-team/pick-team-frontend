@@ -155,9 +155,8 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }} # 배포 서버 접속용 사용자명
           key: ${{ secrets.EC2_SSH_KEY }}     # SSH 개인 키
           port: ${{ secrets.EC2_SSH_PORT }}   # SSH 커스텀 포트
-          source: "./ext_nginx/"             # ext_nginx 폴더 내부 파일들
-          target: ${{ env.DOCKER_NGINX_DIRECTORY }} # nginx 전용 배포 디렉토리 (파일들이 직접 들어감)
-          strip_components: 1                 # ext_nginx 폴더 안의 파일들만 복사
+          source: "./ext_nginx/*"                # 와일드카드로 내부 파일들만
+          target: ${{ env.DOCKER_NGINX_DIRECTORY }} # nginx 전용 배포 디렉토리
           timeout: 300s                       # 타임아웃 설정 (5분)
           command_timeout: 60s                # 개별 명령어 타임아웃
 
@@ -214,6 +213,16 @@ jobs:
             
             FRONT_DIR="${{ env.DOCKER_FRONT_DIRECTORY }}"
             NGINX_DIR="${{ env.DOCKER_NGINX_DIRECTORY }}"
+            
+            # nginx 디렉토리 파일 구조 정리 (ext_nginx 폴더 제거)
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
+              echo "nginx 디렉토리 구조 정리 중..."
+              cd "$NGINX_DIR"
+              mv ext_nginx/* . 2>/dev/null || true
+              rmdir ext_nginx 2>/dev/null || true
+              echo "nginx 파일 구조 정리 완료"
+              ls -la
+            fi
             
             # 배포 디렉토리로 이동
             cd "$FRONT_DIR" || {
