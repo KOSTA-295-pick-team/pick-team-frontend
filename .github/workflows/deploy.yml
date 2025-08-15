@@ -38,13 +38,27 @@ jobs:
       - name: 환경변수 및 호스트 설정
         run: |
           if [ "${GITHUB_REF_NAME}" == "main" ]; then
-            echo "${{ secrets.ENV_DEV }}" > .env # main 브랜치일 경우 DEV 환경변수 적용
+            # DEV 환경: 프론트엔드 환경변수 파일 생성 (빌드용)
+            echo "${{ secrets.ENV_DEV }}" > .env.production
+            
+            # Docker 환경변수 파일 생성
+            echo "${{ secrets.ENV_DEV }}" > .env
+            
             echo "EC2_HOST=${{ secrets.EC2_HOST_DEV }}" >> $GITHUB_ENV
+            echo "DOCKER_FRONT_DIRECTORY=${{ secrets.DOCKER_FRONT_DIRECTORY }}" >> $GITHUB_ENV
+            echo "DOCKER_NGINX_DIRECTORY=${{ secrets.DOCKER_NGINX_DIRECTORY }}" >> $GITHUB_ENV
             echo "DEPLOY_ENV=development" >> $GITHUB_ENV
             echo "개발 환경 설정 완료"
           elif [ "${GITHUB_REF_NAME}" == "production" ]; then
-            echo "${{ secrets.ENV_PROD }}" > .env # production 브랜치일 경우 PROD 환경변수 적용
+            # PROD 환경: 프론트엔드 환경변수 파일 생성 (빌드용)
+            echo "${{ secrets.ENV_PROD }}" > .env.production
+            
+            # Docker 환경변수 파일 생성
+            echo "${{ secrets.ENV_PROD }}" > .env
+            
             echo "EC2_HOST=${{ secrets.EC2_HOST_PROD }}" >> $GITHUB_ENV
+            echo "DOCKER_FRONT_DIRECTORY=${{ secrets.DOCKER_FRONT_DIRECTORY }}" >> $GITHUB_ENV
+            echo "DOCKER_NGINX_DIRECTORY=${{ secrets.DOCKER_NGINX_DIRECTORY }}" >> $GITHUB_ENV
             echo "DEPLOY_ENV=production" >> $GITHUB_ENV
             echo "운영 환경 설정 완료"
           else
@@ -99,6 +113,9 @@ jobs:
             "./dist"
             "./Dockerfile"
             "./.env"
+            "./ext_nginx"
+            "./ext_nginx/docker-compose.yml"
+            "./ext_nginx/nginx.conf"
           )
           
           # 각 파일 존재 확인
@@ -113,21 +130,33 @@ jobs:
           
           echo "모든 필수 파일 검증 완료"
 
-      - name: EC2로 파일 복사
-        uses: appleboy/scp-action@v0.1.7  # EC2에 파일을 복사
+      # EC2 -> 온프레미스로 환경이 변경되었지만 기존 환경변수를 그대로 재사용하기 위해 환경변수명의 접두어는 유지
+      - name: EC2로 프론트엔드 파일 복사
+        uses: appleboy/scp-action@v0.1.7  # 배포 서버에 파일을 복사
         with:
-          host: ${{ env.EC2_HOST }}         # EC2의 공인 IP 또는 도메인
-          username: ${{ secrets.EC2_USERNAME }} # EC2 접속용 사용자명
+          host: ${{ env.EC2_HOST }}         # 배포 서버의 공인 IP 또는 도메인
+          username: ${{ secrets.EC2_USERNAME }} # 배포 서버 접속용 사용자명
           key: ${{ secrets.EC2_SSH_KEY }}     # SSH 개인 키
-          source: "./docker-compose.yml,./dist,./Dockerfile,./nginx,./.env"  # .env 파일도 포함
-          target: "~/react-cicd"              # EC2 상의 대상 디렉토리
+          source: "./docker-compose.yml,./dist,./Dockerfile,./nginx,./.env"  # 프론트엔드 관련 파일들
+          target: ${{ env.DOCKER_FRONT_DIRECTORY }} # 프론트엔드 배포 디렉토리
           timeout: 300s                       # 타임아웃 설정 (5분)
           command_timeout: 60s                # 개별 명령어 타임아웃
 
-      - name: EC2 서버 배포 실행
-        uses: appleboy/ssh-action@v1.0.3  # EC2 서버에 SSH로 접속하여 명령어 실행
+      - name: EC2로 ext_nginx 파일 복사
+        uses: appleboy/scp-action@v0.1.7  # ext_nginx 파일을 별도 경로에 복사
         with:
-          host: ${{ env.EC2_HOST }}         # EC2의 IP
+          host: ${{ env.EC2_HOST }}         # 배포 서버의 공인 IP 또는 도메인
+          username: ${{ secrets.EC2_USERNAME }} # 배포 서버 접속용 사용자명
+          key: ${{ secrets.EC2_SSH_KEY }}     # SSH 개인 키
+          source: "./ext_nginx,./.env"       # ext_nginx 폴더와 환경변수 파일
+          target: ${{ env.DOCKER_NGINX_DIRECTORY }} # nginx 전용 배포 디렉토리
+          timeout: 300s                       # 타임아웃 설정 (5분)
+          command_timeout: 60s                # 개별 명령어 타임아웃
+
+      - name: 서버 배포 실행
+        uses: appleboy/ssh-action@v1.0.3  # 배포 서버에 SSH로 접속하여 명령어 실행
+        with:
+          host: ${{ env.EC2_HOST }}         # 배포 서버의 IP
           username: ${{ secrets.EC2_USERNAME }} # 로그인 사용자명
           key: ${{ secrets.EC2_SSH_KEY }}       # SSH 개인 키
           timeout: 600s                         # SSH 연결 타임아웃 (10분)
@@ -135,12 +164,12 @@ jobs:
           script: |                            # 접속 후 실행할 명령어 목록
             set -e  # 오류 발생 시 스크립트 즉시 중단
             
-            echo "EC2 서버에서 배포 시작..."
+            echo "배포 서버에서 배포 시작..."
             echo "배포 환경: ${{ env.DEPLOY_ENV }}"
             echo "배포 시작 시간: $(date '+%Y-%m-%d %H:%M:%S')"
             
             # 배포 디렉토리로 이동
-            cd ~/react-cicd || {
+            cd ${{ env.DOCKER_FRONT_DIRECTORY }} || {
               echo "react-cicd 디렉토리를 찾을 수 없습니다."
               exit 1
             }
@@ -150,29 +179,59 @@ jobs:
             
             # 기존 컨테이너 정리 (안전한 방식으로)
             echo "기존 서비스 중지 중..."
+            
+            # 프론트엔드 컨테이너 중지
             if sudo docker-compose ps -q 2>/dev/null | grep -q .; then
-              echo "기존 컨테이너가 실행 중입니다. 중지를 시도합니다..."
+              echo "기존 프론트엔드 컨테이너가 실행 중입니다. 중지를 시도합니다..."
               
               # 컨테이너 중지 시도
               if sudo docker-compose down --remove-orphans; then
-                echo "기존 컨테이너가 성공적으로 중지되었습니다."
+                echo "기존 프론트엔드 컨테이너가 성공적으로 중지되었습니다."
               else
-                echo "❌ 기존 컨테이너 중지 실패 - 배포를 중단합니다."
+                echo "❌ 기존 프론트엔드 컨테이너 중지 실패 - 배포를 중단합니다."
                 echo "수동으로 컨테이너를 확인하고 중지한 후 다시 배포하세요."
                 exit 1
               fi
             else
-              echo "실행 중인 컨테이너가 없습니다. 배포를 계속 진행합니다."
+              echo "실행 중인 프론트엔드 컨테이너가 없습니다."
             fi
+            
+            # ext_nginx 컨테이너 중지 (별도 디렉토리에서)
+            echo "ext_nginx 서비스 중지 중..."
+            if cd ${{ env.DOCKER_NGINX_DIRECTORY }}/ext_nginx && sudo docker-compose ps -q 2>/dev/null | grep -q .; then
+              echo "기존 ext_nginx 컨테이너가 실행 중입니다. 중지를 시도합니다..."
+              
+              if sudo docker-compose down --remove-orphans; then
+                echo "기존 ext_nginx 컨테이너가 성공적으로 중지되었습니다."
+              else
+                echo "❌ 기존 ext_nginx 컨테이너 중지 실패 - 배포를 중단합니다."
+                exit 1
+              fi
+            else
+              echo "실행 중인 ext_nginx 컨테이너가 없습니다."
+            fi
+            
+            # 프론트엔드 디렉토리로 돌아가기
+            cd ${{ env.DOCKER_FRONT_DIRECTORY }}
             
             # 이전 이미지 정리
             echo "사용하지 않는 Docker 이미지 정리 중..."
             sudo docker image prune -f || echo "이미지 정리 중 오류 발생"
 
             # 새로운 서비스 빌드 및 시작
-            echo "새로운 서비스 빌드 및 시작 중..."
+            echo "새로운 프론트엔드 서비스 빌드 및 시작 중..."
             sudo docker-compose up -d --build || {
-              echo "Docker Compose 실행 실패"
+              echo "프론트엔드 Docker Compose 실행 실패"
+              echo "상세 로그 확인:"
+              sudo docker-compose logs --tail=50
+              exit 1
+            }
+            
+            # ext_nginx 서비스 시작 (별도 디렉토리에서)
+            echo "ext_nginx 서비스 시작 중..."
+            cd ${{ env.DOCKER_NGINX_DIRECTORY }}/ext_nginx
+            sudo docker-compose up -d --build || {
+              echo "ext_nginx Docker Compose 실행 실패"
               echo "상세 로그 확인:"
               sudo docker-compose logs --tail=50
               exit 1
@@ -180,3 +239,14 @@ jobs:
             
             echo "배포 완료"
             echo "배포 완료 시간: $(date '+%Y-%m-%d %H:%M:%S')"
+            
+            # 서비스 상태 확인
+            echo "=== 서비스 상태 확인 ==="
+            echo "프론트엔드 컨테이너 상태:"
+            cd ${{ env.DOCKER_FRONT_DIRECTORY }}
+            sudo docker-compose ps
+            echo ""
+            echo "ext_nginx 컨테이너 상태:"
+            cd ${{ env.DOCKER_NGINX_DIRECTORY }}/ext_nginx
+            sudo docker-compose ps
+            echo "=========================="
