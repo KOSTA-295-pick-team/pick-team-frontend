@@ -286,6 +286,27 @@ jobs:
             echo "ext_nginx 서비스 시작 중..."
             if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
               cd "$NGINX_DIR/ext_nginx"
+              
+              # ext_nginx 디렉토리에 .env 파일이 있는지 확인하고 없으면 복사
+              if [ ! -f ".env" ]; then
+                echo "ext_nginx 디렉토리에 .env 파일이 없습니다. 상위 디렉토리에서 복사 중..."
+                if [ -f "../.env" ]; then
+                  cp "../.env" ".env"
+                  echo "✅ .env 파일 복사 완료"
+                else
+                  echo "⚠️ 상위 디렉토리에도 .env 파일이 없습니다. 프론트엔드 디렉토리에서 복사 시도..."
+                  cp "$FRONT_DIR/.env" ".env" || {
+                    echo "❌ .env 파일 복사 실패"
+                    exit 1
+                  }
+                fi
+              fi
+              
+              # 환경변수 파일 내용 확인
+              echo "ext_nginx 환경변수 파일 내용 확인:"
+              echo "FRONTEND_PORT: $(grep FRONTEND_PORT .env || echo 'NOT FOUND')"
+              echo "UPLOAD_DOCKER_VOLUME_PATH: $(grep UPLOAD_DOCKER_VOLUME_PATH .env || echo 'NOT FOUND')"
+              
               compose -f docker-compose.yml up -d --build || {
                 echo "ext_nginx Docker Compose 실행 실패"
                 echo "상세 로그 확인:"
