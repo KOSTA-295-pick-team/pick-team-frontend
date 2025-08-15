@@ -155,10 +155,23 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }} # 배포 서버 접속용 사용자명
           key: ${{ secrets.EC2_SSH_KEY }}     # SSH 개인 키
           port: ${{ secrets.EC2_SSH_PORT }}   # SSH 커스텀 포트
-          source: "./ext_nginx,./.env"       # ext_nginx 폴더와 환경변수 파일
-          target: ${{ env.DOCKER_NGINX_DIRECTORY }} # nginx 전용 배포 디렉토리
+          source: "./ext_nginx/"             # ext_nginx 폴더 내부 파일들
+          target: ${{ env.DOCKER_NGINX_DIRECTORY }} # nginx 전용 배포 디렉토리 (파일들이 직접 들어감)
+          strip_components: 1                 # ext_nginx 폴더 안의 파일들만 복사
           timeout: 300s                       # 타임아웃 설정 (5분)
           command_timeout: 60s                # 개별 명령어 타임아웃
+
+      - name: EC2로 환경변수 파일 복사
+        uses: appleboy/scp-action@v0.1.7    # 환경변수 파일 별도 복사
+        with:
+          host: ${{ env.EC2_HOST }}         
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}     
+          port: ${{ secrets.EC2_SSH_PORT }}   
+          source: "./.env"                    # 환경변수 파일
+          target: ${{ env.DOCKER_NGINX_DIRECTORY }} # nginx 디렉토리에 직접 복사
+          timeout: 300s                       
+          command_timeout: 60s
 
       - name: 서버 배포 실행
         uses: appleboy/ssh-action@v1.0.3  # 배포 서버에 SSH로 접속하여 명령어 실행
@@ -231,30 +244,50 @@ jobs:
               echo "실행 중인 프론트엔드 컨테이너가 없습니다."
             fi
             
+            # 개별 컨테이너 이름으로도 정리 (컨테이너 이름 충돌 방지)
+            echo "개별 컨테이너 이름으로 정리 중..."
+            docker stop pickteam-react-container 2>/dev/null || echo "pickteam-react-container가 실행 중이 아닙니다."
+            docker rm pickteam-react-container 2>/dev/null || echo "pickteam-react-container가 존재하지 않습니다."
+            docker stop pickteam-nginx-container 2>/dev/null || echo "pickteam-nginx-container가 실행 중이 아닙니다."
+            docker rm pickteam-nginx-container 2>/dev/null || echo "pickteam-nginx-container가 존재하지 않습니다."
+            
             # ext_nginx 컨테이너 중지 (별도 디렉토리에서)
             echo "ext_nginx 서비스 중지 중..."
-            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
-              cd "$NGINX_DIR/ext_nginx"
-              echo "ext_nginx 디렉토리에서 컨테이너 중지 중..."
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR" ]; then
+              cd "$NGINX_DIR"
+              echo "nginx 디렉토리에서 컨테이너 중지 중..."
               
-              # 0) 현재 실행 중인 ext_nginx 컨테이너 확인
+              # 0) 현재 실행 중인 nginx 컨테이너 확인
               if compose -f docker-compose.yml ps -q 2>/dev/null | grep -q .; then
-                echo "실행 중인 ext_nginx 컨테이너 발견됨. 중지 시도..."
+                echo "실행 중인 nginx 컨테이너 발견됨. 중지 시도..."
                 compose -f docker-compose.yml ps
                 
-                # 1) ext_nginx 서비스만 안전하게 중지
+                # 1) nginx 서비스만 안전하게 중지
                 if ! compose -f docker-compose.yml stop; then
-                  echo "⚠️ ext_nginx 서비스 중지 실패. 강제 종료 시도..."
+                  echo "⚠️ nginx 서비스 중지 실패. 강제 종료 시도..."
                   compose -f docker-compose.yml kill || true
                 fi
                 
-                # 2) ext_nginx 컨테이너 제거 (볼륨은 건드리지 않음)
+                # 2) nginx 컨테이너 제거 (볼륨은 건드리지 않음)
                 compose -f docker-compose.yml rm -f || true
               else
-                echo "실행 중인 ext_nginx 컨테이너가 없습니다."
+                echo "실행 중인 nginx 컨테이너가 없습니다."
               fi
+              
+              # 개별 컨테이너 이름으로도 정리 (컨테이너 이름 충돌 방지)
+              echo "개별 pickteam 컨테이너들 정리 중..."
+              docker stop pickteam-react-container 2>/dev/null || echo "pickteam-react-container가 실행 중이 아닙니다."
+              docker rm pickteam-react-container 2>/dev/null || echo "pickteam-react-container가 존재하지 않습니다."
+              docker stop pickteam-nginx-container 2>/dev/null || echo "pickteam-nginx-container가 실행 중이 아닙니다."
+              docker rm pickteam-nginx-container 2>/dev/null || echo "pickteam-nginx-container가 존재하지 않습니다."
             else
-              echo "ext_nginx 디렉토리를 찾을 수 없습니다: $NGINX_DIR/ext_nginx"
+              # pickteam-nginx-container가 다른 곳에서 실행 중일 수도 있으니 전역으로 정리
+              echo "nginx 디렉토리가 없지만 pickteam 컨테이너들 정리 시도..."
+              docker stop pickteam-react-container 2>/dev/null || echo "pickteam-react-container가 실행 중이 아닙니다."
+              docker rm pickteam-react-container 2>/dev/null || echo "pickteam-react-container가 존재하지 않습니다."
+              docker stop pickteam-nginx-container 2>/dev/null || echo "pickteam-nginx-container가 실행 중이 아닙니다."
+              docker rm pickteam-nginx-container 2>/dev/null || echo "pickteam-nginx-container가 존재하지 않습니다."
+              echo "nginx 디렉토리를 찾을 수 없습니다: $NGINX_DIR"
             fi
             
             # 프론트엔드 디렉토리로 돌아가기
@@ -283,17 +316,14 @@ jobs:
               sleep 2
             done
             
-            # ext_nginx 서비스 시작 (별도 디렉토리에서)
-            echo "ext_nginx 서비스 시작 중..."
-            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
-              cd "$NGINX_DIR/ext_nginx"
+            # nginx 서비스 시작 (별도 디렉토리에서)
+            echo "nginx 서비스 시작 중..."
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR" ]; then
+              cd "$NGINX_DIR"
               
-              # ext_nginx 디렉토리에 최신 .env 파일 복사 (항상 갱신)
-              echo "ext_nginx 디렉토리에 최신 .env 파일 복사 중..."
-              if [ -f "../.env" ]; then
-                cp "../.env" ".env"
-                echo "✅ 상위 디렉토리에서 .env 파일 복사 완료"
-              elif [ -f "$FRONT_DIR/.env" ]; then
+              # nginx 디렉토리에 최신 .env 파일 복사 (항상 갱신)
+              echo "nginx 디렉토리에 최신 .env 파일 복사 중..."
+              if [ -f "$FRONT_DIR/.env" ]; then
                 cp "$FRONT_DIR/.env" ".env"
                 echo "✅ 프론트엔드 디렉토리에서 .env 파일 복사 완료"
               else
@@ -302,28 +332,28 @@ jobs:
               fi
               
               # 환경변수 파일 내용 확인
-              echo "ext_nginx 환경변수 파일 내용 확인:"
+              echo "nginx 환경변수 파일 내용 확인:"
               echo "FRONTEND_PORT: $(grep FRONTEND_PORT .env || echo 'NOT FOUND')"
               echo "UPLOAD_DOCKER_VOLUME_PATH: $(grep UPLOAD_DOCKER_VOLUME_PATH .env || echo 'NOT FOUND')"
               
               compose -f docker-compose.yml up -d --build || {
-                echo "ext_nginx Docker Compose 실행 실패"
+                echo "nginx Docker Compose 실행 실패"
                 echo "상세 로그 확인:"
                 compose -f docker-compose.yml logs --tail=50
                 exit 1
               }
               
-              # ext_nginx 헬스체크 (있으면 대기)
-              echo "⏳ ext_nginx 서비스 헬스체크 대기 중..."
+              # nginx 헬스체크 (있으면 대기)
+              echo "⏳ nginx 서비스 헬스체크 대기 중..."
               for i in $(seq 1 30); do
                 if compose -f docker-compose.yml ps | grep -q "Up"; then
-                  echo "✅ ext_nginx 서비스 정상 시작됨"
+                  echo "✅ nginx 서비스 정상 시작됨"
                   break
                 fi
                 sleep 2
               done
             else
-              echo "⚠️ ext_nginx 디렉토리를 찾을 수 없어 건너뜁니다: $NGINX_DIR/ext_nginx"
+              echo "⚠️ nginx 디렉토리를 찾을 수 없어 건너뜁니다: $NGINX_DIR"
             fi
             
             echo "배포 완료"
@@ -335,9 +365,9 @@ jobs:
             cd "$FRONT_DIR"
             compose -f docker-compose.yml ps
             echo ""
-            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
-              echo "ext_nginx 컨테이너 상태:"
-              cd "$NGINX_DIR/ext_nginx"
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR" ]; then
+              echo "nginx 컨테이너 상태:"
+              cd "$NGINX_DIR"
               compose -f docker-compose.yml ps
             fi
             echo "=========================="
