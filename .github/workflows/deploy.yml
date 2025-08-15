@@ -287,19 +287,17 @@ jobs:
             if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
               cd "$NGINX_DIR/ext_nginx"
               
-              # ext_nginx 디렉토리에 .env 파일이 있는지 확인하고 없으면 복사
-              if [ ! -f ".env" ]; then
-                echo "ext_nginx 디렉토리에 .env 파일이 없습니다. 상위 디렉토리에서 복사 중..."
-                if [ -f "../.env" ]; then
-                  cp "../.env" ".env"
-                  echo "✅ .env 파일 복사 완료"
-                else
-                  echo "⚠️ 상위 디렉토리에도 .env 파일이 없습니다. 프론트엔드 디렉토리에서 복사 시도..."
-                  cp "$FRONT_DIR/.env" ".env" || {
-                    echo "❌ .env 파일 복사 실패"
-                    exit 1
-                  }
-                fi
+              # ext_nginx 디렉토리에 최신 .env 파일 복사 (항상 갱신)
+              echo "ext_nginx 디렉토리에 최신 .env 파일 복사 중..."
+              if [ -f "../.env" ]; then
+                cp "../.env" ".env"
+                echo "✅ 상위 디렉토리에서 .env 파일 복사 완료"
+              elif [ -f "$FRONT_DIR/.env" ]; then
+                cp "$FRONT_DIR/.env" ".env"
+                echo "✅ 프론트엔드 디렉토리에서 .env 파일 복사 완료"
+              else
+                echo "❌ .env 파일을 찾을 수 없습니다"
+                exit 1
               fi
               
               # 환경변수 파일 내용 확인
