@@ -6,7 +6,7 @@ services:
     image: nginx:latest
     container_name: nginx-container
     ports:
-      - "${FRONTEND_PORT}:80"
+      - "3010:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ${UPLOAD_DOCKER_VOLUME_PATH}:/usr/share/nginx/html/uploads

@@ -3,7 +3,8 @@ name: Deploy React App to EC2  # 이 GitHub Actions 워크플로우의 이름 (A
 on:
   push:
     branches:
-      - main  # main 브랜치에 push 이벤트가 발생했을 때 워크플로우 실행
+      - main  # main 브랜치에 push 이벤트가 발생했을 때 워크플로우 실행 (운영환경)
+      - test-deploy # test-deploy 브랜치에 push 이벤트가 발생했을 때 워크플로우 실행 (개발환경)
       - production # production 브랜치에 push 이벤트가 발생했을 때 워크플로우 실행
 
 jobs:
@@ -37,7 +38,7 @@ jobs:
 
       - name: 환경변수 및 호스트 설정
         run: |
-          if [ "${GITHUB_REF_NAME}" == "main" ]; then
+          if [ "${GITHUB_REF_NAME}" == "test-deploy" ]; then
             # DEV 환경: 프론트엔드 환경변수 파일 생성 (빌드용)
             echo "${{ secrets.ENV_DEV }}" > .env.production
             
@@ -51,7 +52,7 @@ jobs:
             echo "DOCKER_NGINX_DIRECTORY=${DOCKER_NGINX_DIRECTORY}" >> $GITHUB_ENV
             echo "DEPLOY_ENV=development" >> $GITHUB_ENV
             echo "개발 환경 설정 완료"
-          elif [ "${GITHUB_REF_NAME}" == "production" ]; then
+          elif [ "${GITHUB_REF_NAME}" == "main" ] || [ "${GITHUB_REF_NAME}" == "production" ]; then
             # PROD 환경: 프론트엔드 환경변수 파일 생성 (빌드용)
             echo "${{ secrets.ENV_PROD }}" > .env.production
             
@@ -67,7 +68,7 @@ jobs:
             echo "운영 환경 설정 완료"
           else
             echo "지원되지 않는 브랜치입니다: ${GITHUB_REF_NAME}"
-            echo "main 또는 production 브랜치만 배포 가능합니다."
+            echo "test-deploy, main 또는 production 브랜치만 배포 가능합니다."
             exit 1
           fi
 
@@ -76,12 +77,12 @@ jobs:
           echo "React 앱 빌드 시작..."
           
           # 빌드 모드 설정
-          if [ "${GITHUB_REF_NAME}" == "main" ]; then
+          if [ "${GITHUB_REF_NAME}" == "test-deploy" ]; then
             export BUILD_MODE=production
-            echo "main 브랜치 -> production 빌드 모드 설정 (추후 배포 브랜치 정책에 따라 변경 예정)"
-          elif [ "${GITHUB_REF_NAME}" == "production" ]; then
+            echo "test-deploy 브랜치 -> production 빌드 모드 설정 (개발 환경변수 사용)"
+          elif [ "${GITHUB_REF_NAME}" == "main" ] || [ "${GITHUB_REF_NAME}" == "production" ]; then
             export BUILD_MODE=production
-            echo "production 브랜치 -> production 빌드 모드 설정"
+            echo "${GITHUB_REF_NAME} 브랜치 -> production 빌드 모드 설정 (운영 환경변수 사용)"
           fi
           
           echo "빌드 모드: $BUILD_MODE"
