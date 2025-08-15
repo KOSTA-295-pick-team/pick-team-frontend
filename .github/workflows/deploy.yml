@@ -44,9 +44,11 @@ jobs:
             # Docker 환경변수 파일 생성
             echo "${{ secrets.ENV_DEV }}" > .env
             
+            # .env 파일에서 환경변수 읽어서 GitHub ENV에 설정
+            source .env
             echo "EC2_HOST=${{ secrets.EC2_HOST_DEV }}" >> $GITHUB_ENV
-            echo "DOCKER_FRONT_DIRECTORY=${{ secrets.DOCKER_FRONT_DIRECTORY }}" >> $GITHUB_ENV
-            echo "DOCKER_NGINX_DIRECTORY=${{ secrets.DOCKER_NGINX_DIRECTORY }}" >> $GITHUB_ENV
+            echo "DOCKER_FRONT_DIRECTORY=${DOCKER_FRONT_DIRECTORY}" >> $GITHUB_ENV
+            echo "DOCKER_NGINX_DIRECTORY=${DOCKER_NGINX_DIRECTORY}" >> $GITHUB_ENV
             echo "DEPLOY_ENV=development" >> $GITHUB_ENV
             echo "개발 환경 설정 완료"
           elif [ "${GITHUB_REF_NAME}" == "production" ]; then
@@ -56,9 +58,11 @@ jobs:
             # Docker 환경변수 파일 생성
             echo "${{ secrets.ENV_PROD }}" > .env
             
+            # .env 파일에서 환경변수 읽어서 GitHub ENV에 설정
+            source .env
             echo "EC2_HOST=${{ secrets.EC2_HOST_PROD }}" >> $GITHUB_ENV
-            echo "DOCKER_FRONT_DIRECTORY=${{ secrets.DOCKER_FRONT_DIRECTORY }}" >> $GITHUB_ENV
-            echo "DOCKER_NGINX_DIRECTORY=${{ secrets.DOCKER_NGINX_DIRECTORY }}" >> $GITHUB_ENV
+            echo "DOCKER_FRONT_DIRECTORY=${DOCKER_FRONT_DIRECTORY}" >> $GITHUB_ENV
+            echo "DOCKER_NGINX_DIRECTORY=${DOCKER_NGINX_DIRECTORY}" >> $GITHUB_ENV
             echo "DEPLOY_ENV=production" >> $GITHUB_ENV
             echo "운영 환경 설정 완료"
           else
