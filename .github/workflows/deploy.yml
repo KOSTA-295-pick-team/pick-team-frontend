@@ -169,80 +169,142 @@ jobs:
           timeout: 600s                         # SSH 연결 타임아웃 (10분)
           command_timeout: 300s                 # 명령어 실행 타임아웃 (5분)
           script: |                            # 접속 후 실행할 명령어 목록
-            set -e  # 오류 발생 시 스크립트 즉시 중단
+            set -eu  # 오류 발생 시 스크립트 즉시 중단 (undefined variable도 에러)
+            
+            # Synology 자주 쓰는 경로까지 PATH 확장
+            export PATH="/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin:/opt/bin:/opt/sbin:/var/packages/Docker/target/usr/bin:$PATH"
+            
+            # docker-compose v1 경로 탐지 (없으면 v2 fallback)
+            COMPOSE_IS_V2=0
+            if command -v docker-compose >/dev/null 2>&1; then
+              COMPOSE_V1="$(command -v docker-compose)"
+            else
+              for p in /var/packages/Docker/target/usr/bin/docker-compose /usr/local/bin/docker-compose /usr/bin/docker-compose /bin/docker-compose; do
+                [ -x "$p" ] && COMPOSE_V1="$p" && break
+              done
+            fi
+            if [ -z "${COMPOSE_V1:-}" ]; then
+              if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+                COMPOSE_IS_V2=1
+              else
+                echo "❌ docker-compose(v1)/docker compose(v2) 없음"
+                exit 1
+              fi
+            fi
+            compose() { if [ "$COMPOSE_IS_V2" -eq 1 ]; then docker compose "$@"; else "$COMPOSE_V1" "$@"; fi; }
+            echo "✅ compose 사용: $([ "$COMPOSE_IS_V2" -eq 1 ] && echo 'v2(docker compose)' || echo "v1($COMPOSE_V1)")"
             
             echo "배포 서버에서 배포 시작..."
             echo "배포 환경: ${{ env.DEPLOY_ENV }}"
             echo "배포 시작 시간: $(date '+%Y-%m-%d %H:%M:%S')"
             
+            FRONT_DIR="${{ env.DOCKER_FRONT_DIRECTORY }}"
+            NGINX_DIR="${{ env.DOCKER_NGINX_DIRECTORY }}"
+            
             # 배포 디렉토리로 이동
-            cd ${{ env.DOCKER_FRONT_DIRECTORY }} || {
-              echo "react-cicd 디렉토리를 찾을 수 없습니다."
+            cd "$FRONT_DIR" || {
+              echo "프론트엔드 디렉토리를 찾을 수 없습니다: $FRONT_DIR"
               exit 1
             }
             
             echo "현재 디렉토리 내용 확인:"
             ls -la
             
-            # 기존 컨테이너 정리 (안전한 방식으로)
-            echo "기존 서비스 중지 중..."
+            # 기존 컨테이너 정리 (안전한 방식으로 - 백엔드와 동일한 로직)
+            echo "기존 프론트엔드 서비스 중지 중..."
             
-            # 프론트엔드 컨테이너 중지
-            if sudo docker-compose ps -q 2>/dev/null | grep -q .; then
-              echo "기존 프론트엔드 컨테이너가 실행 중입니다. 중지를 시도합니다..."
+            # 0) 현재 실행 중인 컨테이너 확인
+            if compose -f docker-compose.yml ps -q 2>/dev/null | grep -q .; then
+              echo "실행 중인 프론트엔드 컨테이너 발견됨. 중지 시도..."
+              compose -f docker-compose.yml ps
               
-              # 컨테이너 중지 시도
-              if sudo docker-compose down --remove-orphans; then
-                echo "기존 프론트엔드 컨테이너가 성공적으로 중지되었습니다."
-              else
-                echo "❌ 기존 프론트엔드 컨테이너 중지 실패 - 배포를 중단합니다."
-                echo "수동으로 컨테이너를 확인하고 중지한 후 다시 배포하세요."
-                exit 1
+              # 1) 서비스만 안전하게 중지 (실행 중 아니어도 에러 없이 통과)
+              if ! compose -f docker-compose.yml stop; then
+                echo "⚠️ 프론트엔드 서비스 중지 실패. 강제 종료 시도..."
+                compose -f docker-compose.yml kill || true
               fi
+              
+              # 2) 컨테이너 제거 (볼륨은 건드리지 않음)
+              compose -f docker-compose.yml rm -f || true
             else
               echo "실행 중인 프론트엔드 컨테이너가 없습니다."
             fi
             
             # ext_nginx 컨테이너 중지 (별도 디렉토리에서)
             echo "ext_nginx 서비스 중지 중..."
-            if cd ${{ env.DOCKER_NGINX_DIRECTORY }}/ext_nginx && sudo docker-compose ps -q 2>/dev/null | grep -q .; then
-              echo "기존 ext_nginx 컨테이너가 실행 중입니다. 중지를 시도합니다..."
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
+              cd "$NGINX_DIR/ext_nginx"
+              echo "ext_nginx 디렉토리에서 컨테이너 중지 중..."
               
-              if sudo docker-compose down --remove-orphans; then
-                echo "기존 ext_nginx 컨테이너가 성공적으로 중지되었습니다."
+              # 0) 현재 실행 중인 ext_nginx 컨테이너 확인
+              if compose -f docker-compose.yml ps -q 2>/dev/null | grep -q .; then
+                echo "실행 중인 ext_nginx 컨테이너 발견됨. 중지 시도..."
+                compose -f docker-compose.yml ps
+                
+                # 1) ext_nginx 서비스만 안전하게 중지
+                if ! compose -f docker-compose.yml stop; then
+                  echo "⚠️ ext_nginx 서비스 중지 실패. 강제 종료 시도..."
+                  compose -f docker-compose.yml kill || true
+                fi
+                
+                # 2) ext_nginx 컨테이너 제거 (볼륨은 건드리지 않음)
+                compose -f docker-compose.yml rm -f || true
               else
-                echo "❌ 기존 ext_nginx 컨테이너 중지 실패 - 배포를 중단합니다."
-                exit 1
+                echo "실행 중인 ext_nginx 컨테이너가 없습니다."
               fi
             else
-              echo "실행 중인 ext_nginx 컨테이너가 없습니다."
+              echo "ext_nginx 디렉토리를 찾을 수 없습니다: $NGINX_DIR/ext_nginx"
             fi
             
             # 프론트엔드 디렉토리로 돌아가기
-            cd ${{ env.DOCKER_FRONT_DIRECTORY }}
+            cd "$FRONT_DIR"
             
             # 이전 이미지 정리
             echo "사용하지 않는 Docker 이미지 정리 중..."
-            sudo docker image prune -f || echo "이미지 정리 중 오류 발생"
+            docker image prune -f || echo "이미지 정리 중 오류 발생"
 
-            # 새로운 서비스 빌드 및 시작
+            # 새로운 프론트엔드 서비스 빌드 및 시작
             echo "새로운 프론트엔드 서비스 빌드 및 시작 중..."
-            sudo docker-compose up -d --build || {
+            compose -f docker-compose.yml up -d --build || {
               echo "프론트엔드 Docker Compose 실행 실패"
               echo "상세 로그 확인:"
-              sudo docker-compose logs --tail=50
+              compose -f docker-compose.yml logs --tail=50
               exit 1
             }
             
+            # 프론트엔드 헬스체크 (있으면 대기)
+            echo "⏳ 프론트엔드 서비스 헬스체크 대기 중..."
+            for i in $(seq 1 30); do
+              if compose -f docker-compose.yml ps | grep -q "Up"; then
+                echo "✅ 프론트엔드 서비스 정상 시작됨"
+                break
+              fi
+              sleep 2
+            done
+            
             # ext_nginx 서비스 시작 (별도 디렉토리에서)
             echo "ext_nginx 서비스 시작 중..."
-            cd ${{ env.DOCKER_NGINX_DIRECTORY }}/ext_nginx
-            sudo docker-compose up -d --build || {
-              echo "ext_nginx Docker Compose 실행 실패"
-              echo "상세 로그 확인:"
-              sudo docker-compose logs --tail=50
-              exit 1
-            }
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
+              cd "$NGINX_DIR/ext_nginx"
+              compose -f docker-compose.yml up -d --build || {
+                echo "ext_nginx Docker Compose 실행 실패"
+                echo "상세 로그 확인:"
+                compose -f docker-compose.yml logs --tail=50
+                exit 1
+              }
+              
+              # ext_nginx 헬스체크 (있으면 대기)
+              echo "⏳ ext_nginx 서비스 헬스체크 대기 중..."
+              for i in $(seq 1 30); do
+                if compose -f docker-compose.yml ps | grep -q "Up"; then
+                  echo "✅ ext_nginx 서비스 정상 시작됨"
+                  break
+                fi
+                sleep 2
+              done
+            else
+              echo "⚠️ ext_nginx 디렉토리를 찾을 수 없어 건너뜁니다: $NGINX_DIR/ext_nginx"
+            fi
             
             echo "배포 완료"
             echo "배포 완료 시간: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -250,10 +312,14 @@ jobs:
             # 서비스 상태 확인
             echo "=== 서비스 상태 확인 ==="
             echo "프론트엔드 컨테이너 상태:"
-            cd ${{ env.DOCKER_FRONT_DIRECTORY }}
-            sudo docker-compose ps
+            cd "$FRONT_DIR"
+            compose -f docker-compose.yml ps
             echo ""
-            echo "ext_nginx 컨테이너 상태:"
-            cd ${{ env.DOCKER_NGINX_DIRECTORY }}/ext_nginx
-            sudo docker-compose ps
+            if [ -n "$NGINX_DIR" ] && [ -d "$NGINX_DIR/ext_nginx" ]; then
+              echo "ext_nginx 컨테이너 상태:"
+              cd "$NGINX_DIR/ext_nginx"
+              compose -f docker-compose.yml ps
+            fi
             echo "=========================="
+            
+            echo "🎉 Deploy done (Stop→Recreate + Health Check)"
