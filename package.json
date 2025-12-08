@@ -16,8 +16,8 @@
     "@vitejs/plugin-react": "^4.6.0",
     "axios": "^1.10.0",
     "livekit-client": "^2.15.2",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "react-linkify": "^1.0.0-alpha",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.6.2",
@@ -26,8 +26,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.1",
     "typescript": "~5.7.2"
   }
 }

@@ -191,7 +191,7 @@
 | Jdk Version | JDK 17 (OpenJDK zulu) |
 | Server Environment | Amazon AWS EC2 |
 | Web Server + WAS | Nginx+ Tomcat 10.1 |
-| Frontend Framework | React |
+| Frontend Framework | React 19.2.1 |
 | Backend Framework | Spring Boot  3.5 |
 | Database | MySQL 8.4.4 LTS |
 | IDE | IntelliJ IDEA 2025.1 |
